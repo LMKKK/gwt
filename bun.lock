@@ -1,0 +1,77 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "gwt-monorepo",
+      "devDependencies": {
+        "@types/bun": "^1.3.0",
+        "typescript": "^5.9.0",
+      },
+    },
+    "packages/gwt": {
+      "name": "@autumn/gwt",
+      "version": "0.1.0",
+      "bin": {
+        "gwt": "bin/gwt.js",
+      },
+      "optionalDependencies": {
+        "@autumn/gwt-darwin-arm64": "0.1.0",
+        "@autumn/gwt-darwin-x64": "0.1.0",
+        "@autumn/gwt-linux-arm64-gnu": "0.1.0",
+        "@autumn/gwt-linux-arm64-musl": "0.1.0",
+        "@autumn/gwt-linux-x64-gnu": "0.1.0",
+        "@autumn/gwt-linux-x64-musl": "0.1.0",
+      },
+    },
+    "packages/gwt-darwin-arm64": {
+      "name": "@autumn/gwt-darwin-arm64",
+      "version": "0.1.0",
+    },
+    "packages/gwt-darwin-x64": {
+      "name": "@autumn/gwt-darwin-x64",
+      "version": "0.1.0",
+    },
+    "packages/gwt-linux-arm64-gnu": {
+      "name": "@autumn/gwt-linux-arm64-gnu",
+      "version": "0.1.0",
+    },
+    "packages/gwt-linux-arm64-musl": {
+      "name": "@autumn/gwt-linux-arm64-musl",
+      "version": "0.1.0",
+    },
+    "packages/gwt-linux-x64-gnu": {
+      "name": "@autumn/gwt-linux-x64-gnu",
+      "version": "0.1.0",
+    },
+    "packages/gwt-linux-x64-musl": {
+      "name": "@autumn/gwt-linux-x64-musl",
+      "version": "0.1.0",
+    },
+  },
+  "packages": {
+    "@autumn/gwt": ["@autumn/gwt@workspace:packages/gwt"],
+
+    "@autumn/gwt-darwin-arm64": ["@autumn/gwt-darwin-arm64@workspace:packages/gwt-darwin-arm64"],
+
+    "@autumn/gwt-darwin-x64": ["@autumn/gwt-darwin-x64@workspace:packages/gwt-darwin-x64"],
+
+    "@autumn/gwt-linux-arm64-gnu": ["@autumn/gwt-linux-arm64-gnu@workspace:packages/gwt-linux-arm64-gnu"],
+
+    "@autumn/gwt-linux-arm64-musl": ["@autumn/gwt-linux-arm64-musl@workspace:packages/gwt-linux-arm64-musl"],
+
+    "@autumn/gwt-linux-x64-gnu": ["@autumn/gwt-linux-x64-gnu@workspace:packages/gwt-linux-x64-gnu"],
+
+    "@autumn/gwt-linux-x64-musl": ["@autumn/gwt-linux-x64-musl@workspace:packages/gwt-linux-x64-musl"],
+
+    "@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
+
+    "@types/node": ["@types/node@26.2.0", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg=="],
+
+    "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "undici-types": ["undici-types@8.3.0", "", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
+  }
+}
