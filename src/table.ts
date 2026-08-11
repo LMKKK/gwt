@@ -1,10 +1,11 @@
 import type { WorktreeView } from "./types";
 import { formatStatus } from "./status";
+import { createTerminalTheme } from "./theme";
 
 const HEADERS = ["", "BRANCH", "PATH", "COMMIT", "STATUS"] as const;
 
 function width(value: string): number {
-  return Bun.stringWidth(value.replace(/\x1b\[[0-9;]*m/g, ""));
+  return Bun.stringWidth(value);
 }
 
 export function truncate(value: string, maxWidth: number): string {
@@ -33,7 +34,12 @@ function rows(worktrees: WorktreeView[]): string[][] {
   ]);
 }
 
-export function renderTable(worktrees: WorktreeView[], terminalWidth = 120): string[] {
+export interface TableOptions {
+  color?: boolean;
+  selected?: number;
+}
+
+export function renderTable(worktrees: WorktreeView[], terminalWidth = 120, options: TableOptions = {}): string[] {
   const data = rows(worktrees);
   const allRows = [Array.from(HEADERS), ...data];
   const natural = HEADERS.map((_, column) => Math.max(...allRows.map((row) => width(row[column] ?? ""))));
@@ -53,6 +59,22 @@ export function renderTable(worktrees: WorktreeView[], terminalWidth = 120): str
   const format = (row: readonly string[]) => row.map((cell, column) => {
     const clipped = truncate(cell, widths[column]!);
     return column === row.length - 1 ? clipped : pad(clipped, widths[column]!);
-  }).join("  ");
-  return [format(HEADERS), ...data.map(format)];
+  });
+  const theme = createTerminalTheme(options.color ?? false);
+  const header = format(HEADERS).map(theme.header).join("  ");
+  const body = data.map((row, index) => {
+    const worktree = worktrees[index]!;
+    const selected = index === options.selected;
+    return format(row).map((cell, column) => {
+      if (column === 0) return worktree.current ? theme.current(cell) : cell;
+      if (column === 1) {
+        if (selected) return theme.selection(cell);
+        return worktree.branch ? theme.branch(cell) : theme.detached(cell);
+      }
+      if (column === 2) return theme.path(cell, selected);
+      if (column === 3) return theme.commit(cell);
+      return theme.status(cell, worktree);
+    }).join("  ");
+  });
+  return [header, ...body];
 }

@@ -1,5 +1,6 @@
 import type { WorktreeView } from "./types";
 import { renderTable } from "./table";
+import { createTerminalTheme } from "./theme";
 
 export type Key = "up" | "down" | "select" | "cancel" | "unknown";
 
@@ -23,10 +24,6 @@ export function parseKeys(input: string): Key[] {
   return keys;
 }
 
-function color(enabled: boolean, code: string, text: string): string {
-  return enabled ? `\x1b[${code}m${text}\x1b[0m` : text;
-}
-
 export interface TuiOptions {
   input?: NodeJS.ReadStream;
   output?: NodeJS.WriteStream;
@@ -37,19 +34,23 @@ export async function selectWorktree(worktrees: WorktreeView[], options: TuiOpti
   if (worktrees.length === 0) return undefined;
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
-  const useColor = options.color ?? !("NO_COLOR" in process.env);
+  const useColor = options.color ?? Boolean(input.isTTY && output.isTTY && !("NO_COLOR" in process.env));
+  const theme = createTerminalTheme(useColor);
   let selected = Math.max(0, worktrees.findIndex((worktree) => worktree.current));
   let renderedLines = 0;
 
   const render = () => {
     if (renderedLines) output.write(`\x1b[${renderedLines}F`);
     const columns = output.columns && output.columns >= 20 ? output.columns : 120;
-    const lines = renderTable(worktrees, columns - 2).map((line, index) => {
-      const marker = index === 0 ? "  " : index - 1 === selected ? color(useColor, "36", "> ") : "  ";
-      const body = index - 1 === selected ? color(useColor, "7", line) : line;
-      return `\x1b[2K${marker}${body}`;
+    const lines = renderTable(worktrees, columns - 2, { color: useColor, selected }).map((line, index) => {
+      const marker = index === 0 ? "  " : index - 1 === selected ? theme.selection("> ") : "  ";
+      return `\x1b[2K${marker}${line}`;
     });
-    lines.push("\x1b[2K↑/↓ or j/k move • Enter select • q cancel");
+    const hint = [
+      theme.key("↑/↓"), theme.hint(" or "), theme.key("j/k"), theme.hint(" move • "),
+      theme.key("Enter"), theme.hint(" select • "), theme.key("q"), theme.hint(" cancel"),
+    ].join("");
+    lines.push(`\x1b[2K${hint}`);
     output.write(lines.join("\n") + "\n");
     renderedLines = lines.length;
   };

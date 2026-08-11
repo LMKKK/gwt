@@ -36,9 +36,9 @@ Run this from any directory inside an attached worktree:
 gwt list
 ```
 
-The initial selection is the current worktree. Use `↑`/`↓` or `k`/`j` to move, Enter to switch, and `q`, Escape, or Ctrl-C to cancel. The table shows the current worktree marker, branch, path, 12-character commit ID, and a status summary. Detached worktrees are labeled `detached`; inaccessible entries are labeled `prunable`, `bare`, or `unavailable`.
+The initial selection is the current worktree. Use `↑`/`↓` or `k`/`j` to move, Enter to switch, and `q`, Escape, or Ctrl-C to cancel. The table shows the current worktree marker, branch, path, 12-character commit ID, and a status summary. Detached worktrees are labeled `detached`; inaccessible entries are labeled `prunable`, `bare`, or `unavailable`. In an interactive terminal, restrained semantic colors distinguish branches and clean, dirty, or unavailable states while keeping the selected row easy to scan.
 
-In a non-TTY context, `gwt list` prints a plain table and exits without prompting. `NO_COLOR` disables terminal colors. Paths containing spaces and Unicode are supported; paths containing newlines or ending in a newline are outside the initial compatibility target.
+In a non-TTY context, `gwt list` prints the same plain, ANSI-free table and exits without prompting. Set the standard `NO_COLOR` environment variable (to any value, including an empty value) to disable colors in interactive terminals. Paths containing spaces and Unicode are supported; paths containing newlines or ending in a newline are outside the initial compatibility target.
 
 Other commands:
 

@@ -66,7 +66,7 @@ send -- "exit\\r"
 expect eof
 `;
       const child = Bun.spawn([expectBinary, "-c", script], {
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` }, stdout: "pipe", stderr: "pipe",
+        env: { ...process.env, NO_COLOR: "", PATH: `${bin}:${process.env.PATH ?? ""}` }, stdout: "pipe", stderr: "pipe",
       });
       const [stdout, stderr, code] = await Promise.all([
         new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
@@ -75,6 +75,9 @@ expect eof
       expect(stdout).toContain(`__PWD__${expectedPath}`);
       expect(stdout).toContain(`__CANCEL__${expectedPath}`);
       expect(stdout).toContain("\x1b[?25h");
+      const tuiFrames = stdout.match(/\x1b\[\?25l[\s\S]*?\x1b\[\?25h/g) ?? [];
+      expect(tuiFrames.length).toBe(2);
+      for (const frame of tuiFrames) expect(frame).not.toMatch(/\x1b\[[0-9;]*m/);
     }, 30_000);
   }
 });

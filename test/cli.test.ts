@@ -19,6 +19,13 @@ describe("CLI", () => {
     expect(await runCli(["wat"], { stdin: process.stdin, stdout: stdout.stream, stderr: stderr.stream })).toBe(2);
     expect(stderr.get()).toContain("unknown command 'wat'");
   });
+
+  test("prints an ANSI-free table when stdout is not a TTY", async () => {
+    const stdout = output(); const stderr = output();
+    expect(await runCli(["list"], { stdin: process.stdin, stdout: stdout.stream, stderr: stderr.stream })).toBe(0);
+    expect(stdout.get()).toContain("BRANCH");
+    expect(stdout.get()).not.toMatch(/\x1b\[[0-9;]*m/);
+  });
 });
 
 describe("shell initialization", () => {
