@@ -44,12 +44,17 @@ describe("real Git repository", () => {
   const directories: string[] = [];
   afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
-  async function git(cwd: string, ...args: string[]) {
+  async function gitResult(cwd: string, ...args: string[]) {
     const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe", env: {
       ...process.env, GIT_AUTHOR_NAME: "gwt test", GIT_AUTHOR_EMAIL: "gwt@example.invalid",
       GIT_COMMITTER_NAME: "gwt test", GIT_COMMITTER_EMAIL: "gwt@example.invalid",
     } });
     const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    return { stdout, stderr, code };
+  }
+
+  async function git(cwd: string, ...args: string[]) {
+    const { stdout, stderr, code } = await gitResult(cwd, ...args);
     if (code !== 0) throw new Error(stderr);
     return stdout;
   }
@@ -105,8 +110,10 @@ describe("real Git repository", () => {
     await git(root, "switch", "main");
     await Bun.write(join(root, "conflict.txt"), "main\n");
     await git(root, "commit", "-am", "main");
-    const merge = Bun.spawn(["git", "merge", "other"], { cwd: root, stdout: "ignore", stderr: "ignore" });
-    expect(await merge.exited).not.toBe(0);
+    const merge = await gitResult(root, "merge", "other");
+    expect(merge.code).not.toBe(0);
+    const unmerged = await git(root, "ls-files", "-u");
+    if (!unmerged.trim()) throw new Error(`git merge failed without creating a conflict:\n${merge.stderr}`);
 
     const worktrees = await listWorktrees(root);
     expect(worktrees[0]?.status).toEqual({ conflicted: 1, staged: 0, modified: 0, untracked: 0 });
