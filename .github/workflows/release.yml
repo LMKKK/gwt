@@ -52,7 +52,7 @@ jobs:
           done
       - run: cargo test --all && cargo xtask pack-check && cargo xtask sizes
       - run: cargo install --path . --root /tmp/gwt-cargo-smoke --locked && /tmp/gwt-cargo-smoke/bin/gwt --version
-      - run: npm install --prefix /tmp/gwt-npm-smoke ./packages/gwt ./packages/gwt-* --force && /tmp/gwt-npm-smoke/node_modules/.bin/gwt --version
+      - run: npm install --prefix /tmp/gwt-npm-smoke --install-links ./packages/gwt ./packages/gwt-* --force && /tmp/gwt-npm-smoke/node_modules/.bin/gwt --version
       - run: for package in packages/gwt-*; do npm publish "./$package" --access public --provenance; done
         env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }
       - run: cargo publish --token '${{ secrets.CARGO_REGISTRY_TOKEN }}'
