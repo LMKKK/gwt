@@ -2,7 +2,7 @@ use crate::{git, shell, table, tui};
 use std::io::{self, IsTerminal, Write};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 fn help() -> String {
-    format!("gwt {VERSION} — switch between Git worktrees\n\nUsage:\n  gwt list          List worktrees (interactive in a terminal)\n  gwt init zsh      Print zsh integration\n  gwt init bash     Print bash integration\n  gwt --help        Show help\n  gwt --version     Show version\n\nInstall shell integration to make Enter change the current shell directory:\n  eval \"$(gwt init zsh)\"")
+    format!("gwt {VERSION} — switch between Git worktrees\n\nUsage:\n  gwt list          List and switch between worktrees\n  gwt new           Create and switch to a worktree (shell integration required)\n  gwt init zsh      Print zsh integration\n  gwt init bash     Print bash integration\n  gwt --help        Show help\n  gwt --version     Show version\n\nInstall shell integration so list and new can change the current directory:\n  eval \"$(gwt init zsh)\"\n  eval \"$(gwt init bash)\"")
 }
 pub fn run(args: Vec<String>) -> u8 {
     match run_inner(&args) {
@@ -62,6 +62,40 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
                     writeln!(lock, "{line}")?
                 }
             }
+            Ok(0)
+        }
+        Some("new") => {
+            if args.len() == 1 {
+                eprintln!("gwt new requires shell integration. Run 'eval \"$(gwt init zsh)\"' or 'eval \"$(gwt init bash)\"' first.");
+                return Ok(2);
+            }
+            if args.len() != 2 || args[1] != "--select" {
+                eprintln!("Usage: gwt new");
+                return Ok(2);
+            }
+            if !(io::stdin().is_terminal() && io::stderr().is_terminal()) {
+                eprintln!("gwt new --select requires an interactive terminal on stdin and stderr.");
+                return Ok(2);
+            }
+            let cwd = git::cwd()?;
+            let branches = git::available_branches(&cwd)?;
+            if branches.is_empty() {
+                return Err("No available local branches. Every local branch is already checked out in a worktree.".into());
+            }
+            let Some(branch) = tui::select_branch(&branches)? else {
+                return Ok(0);
+            };
+            let Some(input) = tui::input_path(&branch)? else {
+                return Ok(0);
+            };
+            let path = std::path::Path::new(&input);
+            let absolute = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            };
+            git::add_worktree(&cwd, &absolute, &branch)?;
+            println!("{}", absolute.display());
             Ok(0)
         }
         Some(other) => {

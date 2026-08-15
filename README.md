@@ -30,7 +30,9 @@ eval "$(gwt init zsh)"
 eval "$(gwt init bash)"
 ```
 
-Use `gwt list`, move with arrow keys or `j`/`k`, press Enter to select, and press `q` to cancel. `gwt list --select` prints the chosen path and is intended for shell integration. Set `NO_COLOR` to disable color.
+Use `gwt list`, move with arrow keys or `j`/`k`, press Enter to select, and press `q` to cancel. Use `gwt new` to select an unused local branch, edit the new worktree path (the branch name is the default), create it, and switch to it. Relative paths are resolved from the directory where you invoked `gwt`; `~` and shell variables are not expanded.
+
+The internal `gwt list --select` and `gwt new --select` commands print a selected or newly created absolute path for shell integration. Their interactive interfaces are written to stderr. Set `NO_COLOR` to disable color.
 
 ## Development
 

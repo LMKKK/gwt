@@ -6,6 +6,12 @@ pub fn init() -> &'static str {
     if [ -n "$_gwt_path" ]; then
       builtin cd -- "$_gwt_path"
     fi
+  elif [ "$#" -eq 1 ] && [ "$1" = "new" ] && [ -t 0 ] && [ -t 2 ]; then
+    local _gwt_path
+    _gwt_path="$(command gwt new --select)" || return $?
+    if [ -n "$_gwt_path" ]; then
+      builtin cd -- "$_gwt_path"
+    fi
   else
     command gwt "$@"
   fi

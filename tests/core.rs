@@ -1,5 +1,5 @@
 use autumnk_gwt::{
-    git::{parse_status, parse_worktrees},
+    git::{parse_branches, parse_status, parse_worktrees},
     status, table,
     tui::{parse_key, Key},
     types::{Availability, StatusCounts, Worktree},
@@ -49,6 +49,14 @@ fn parses_worktree_porcelain() {
     assert!(r[1].detached);
     assert_eq!(r[2].prunable.as_deref(), Some("gone"));
     assert!(r[3].bare)
+}
+
+#[test]
+fn parses_local_branch_names() {
+    assert_eq!(
+        parse_branches(b"feature/one\nmain\nrelease-\xe4\xbd\xa0\xe5\xa5\xbd\n"),
+        vec!["feature/one", "main", "release-你好"]
+    );
 }
 #[test]
 fn parses_status_dimensions_and_rename() {

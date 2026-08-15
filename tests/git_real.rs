@@ -95,6 +95,51 @@ fn reports_not_a_repository() {
 }
 
 #[test]
+fn filters_occupied_branches_and_creates_relative_to_cwd() {
+    let t = Temp::new("new");
+    let root = t.0.join("main");
+    fs::create_dir(&root).unwrap();
+    ok(&root, &["init", "-b", "main"]);
+    fs::write(root.join("tracked.txt"), "initial\n").unwrap();
+    ok(&root, &["add", "tracked.txt"]);
+    ok(&root, &["commit", "-m", "initial"]);
+    ok(&root, &["branch", "feature/one"]);
+    ok(&root, &["branch", "unicode-你好"]);
+
+    assert_eq!(
+        git::available_branches(&root).unwrap(),
+        vec!["feature/one", "unicode-你好"]
+    );
+
+    let nested = root.join("nested");
+    fs::create_dir(&nested).unwrap();
+    let destination = nested.join("work tree-你好");
+    git::add_worktree(&nested, &destination, "unicode-你好").unwrap();
+    assert!(destination.is_dir());
+    let branch = run(&destination, &["branch", "--show-current"]);
+    assert_eq!(
+        String::from_utf8_lossy(&branch.stdout).trim(),
+        "unicode-你好"
+    );
+    assert_eq!(git::available_branches(&root).unwrap(), vec!["feature/one"]);
+}
+
+#[test]
+fn creating_at_an_existing_path_preserves_git_error() {
+    let t = Temp::new("new-conflict");
+    ok(&t.0, &["init", "-b", "main"]);
+    fs::write(t.0.join("tracked.txt"), "initial\n").unwrap();
+    ok(&t.0, &["add", "tracked.txt"]);
+    ok(&t.0, &["commit", "-m", "initial"]);
+    ok(&t.0, &["branch", "feature"]);
+    let occupied = t.0.join("occupied");
+    fs::create_dir(&occupied).unwrap();
+    fs::write(occupied.join("file"), "conflict").unwrap();
+    let error = git::add_worktree(&t.0, &occupied, "feature").unwrap_err();
+    assert!(error.to_string().contains("already exists"));
+}
+
+#[test]
 fn counts_a_real_merge_conflict() {
     let t = Temp::new("conflict");
     ok(&t.0, &["init", "-b", "main"]);

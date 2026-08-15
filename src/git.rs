@@ -1,5 +1,6 @@
 use crate::types::{Availability, StatusCounts, Worktree};
 use std::{
+    collections::HashSet,
     fs, io,
     path::{Path, PathBuf},
     process::Command,
@@ -90,6 +91,14 @@ pub fn parse_worktrees(input: &[u8]) -> Vec<Worktree> {
     records
 }
 
+pub fn parse_branches(input: &[u8]) -> Vec<String> {
+    input
+        .split(|byte| *byte == b'\n')
+        .filter(|name| !name.is_empty())
+        .map(|name| String::from_utf8_lossy(name).into_owned())
+        .collect()
+}
+
 pub fn parse_status(input: &[u8]) -> StatusCounts {
     let entries: Vec<_> = input.split(|b| *b == 0).collect();
     let mut result = StatusCounts::default();
@@ -125,6 +134,52 @@ fn inside(candidate: &Path, root: &Path) -> bool {
 
 pub fn list(cwd: &Path) -> Result<Vec<Worktree>, GitError> {
     list_with(&SystemGit, cwd)
+}
+
+pub fn available_branches(cwd: &Path) -> Result<Vec<String>, GitError> {
+    let runner = SystemGit;
+    let branches = parse_branches(&runner.run(
+        &["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+        cwd,
+    )?);
+    let occupied: HashSet<String> =
+        parse_worktrees(&runner.run(&["worktree", "list", "--porcelain", "-z"], cwd)?)
+            .into_iter()
+            .filter_map(|worktree| worktree.branch)
+            .collect();
+    Ok(branches
+        .into_iter()
+        .filter(|branch| !occupied.contains(branch))
+        .collect())
+}
+
+pub fn add_worktree(cwd: &Path, path: &Path, branch: &str) -> Result<(), GitError> {
+    let output = Command::new("git")
+        .args(["worktree", "add"])
+        .arg(path)
+        .arg(branch)
+        .current_dir(cwd)
+        .output()
+        .map_err(|_| {
+            GitError(
+                "Unable to run Git. Make sure 'git' is installed and available in PATH.".into(),
+            )
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    Err(GitError(if detail.is_empty() {
+        format!(
+            "Git command failed: git worktree add {} {branch}",
+            path.display()
+        )
+    } else {
+        format!(
+            "Git command failed: git worktree add {} {branch}\n{detail}",
+            path.display()
+        )
+    }))
 }
 fn list_with(runner: &dyn GitRunner, cwd: &Path) -> Result<Vec<Worktree>, GitError> {
     let mut records =
