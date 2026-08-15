@@ -7,7 +7,7 @@ if (!process.env.CI) {
 }
 
 for (const name of [...targets.map((item) => item.package), "gwt"]) {
-  console.log(`Publishing @autumn/${name}`);
+  console.log(`Publishing @autumn-k/${name}`);
   const child = Bun.spawn(["npm", "publish", "--access", "public", "--provenance"], {
     cwd: join(import.meta.dir, "..", "packages", name), stdout: "inherit", stderr: "inherit",
   });

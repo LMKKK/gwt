@@ -5,7 +5,7 @@
 ## Install
 
 ```sh
-npm install --global @autumn/gwt
+npm install --global @autumn-k/gwt
 ```
 
 The package installs the matching standalone executable for macOS or Linux on arm64 or x64. Linux glibc and musl are both supported. Windows is not currently supported.
