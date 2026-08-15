@@ -1,3 +1,3 @@
-# @autumn-k/gwt
+# @autumnk/gwt
 
-Platform-selecting launcher for the `gwt` Git worktree CLI. See the project README for usage.
+Native Rust Git worktree switcher. See the [project repository](https://github.com/LMKKK/gwt) for usage and development documentation.

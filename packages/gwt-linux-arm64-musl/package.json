@@ -1,1 +1,1 @@
-{"name":"@autumn-k/gwt-linux-arm64-musl","version":"0.1.0","description":"gwt binary for Linux arm64 musl","license":"MIT","os":["linux"],"cpu":["arm64"],"libc":["musl"],"files":["bin"],"publishConfig":{"access":"public","provenance":true}}
+{"name":"@autumnk/gwt-linux-arm64-musl","version":"0.1.0","description":"gwt binary for Linux arm64 musl","license":"MIT","os":["linux"],"cpu":["arm64"],"libc":["musl"],"files":["bin"],"publishConfig":{"access":"public","provenance":true}}

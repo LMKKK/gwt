@@ -15,7 +15,7 @@ function libc() {
 const platform = process.platform;
 const arch = process.arch;
 const suffix = platform === "linux" ? `-${libc()}` : "";
-const packageName = `@autumn-k/gwt-${platform}-${arch}${suffix}`;
+const packageName = `@autumnk/gwt-${platform}-${arch}${suffix}`;
 
 if (!(["darwin", "linux"].includes(platform)) || !(["arm64", "x64"].includes(arch))) {
   console.error(`gwt: unsupported platform: ${platform}-${arch}`);
@@ -27,7 +27,7 @@ try {
   binary = require.resolve(`${packageName}/bin/gwt`);
 } catch {
   console.error(`gwt: platform package ${packageName} is not installed.`);
-  console.error("Try reinstalling @autumn-k/gwt without disabling optional dependencies.");
+  console.error("Try reinstalling @autumnk/gwt without disabling optional dependencies.");
   process.exit(1);
 }
 

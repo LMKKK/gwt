@@ -1,0 +1,29 @@
+[package]
+name = "autumnk-gwt"
+version = "0.1.0"
+edition = "2021"
+description = "A fast interactive Git worktree switcher"
+license = "MIT"
+repository = "https://github.com/LMKKK/gwt"
+readme = "README.md"
+keywords = ["git", "worktree", "cli", "terminal"]
+categories = ["command-line-utilities", "development-tools"]
+include = ["/src/**", "/tests/**", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE"]
+
+[[bin]]
+name = "gwt"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.29"
+unicode-width = "0.2"
+
+[workspace]
+members = ["xtask"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+opt-level = "z"

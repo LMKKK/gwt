@@ -1,30 +1,60 @@
 name: Release
 on:
   workflow_dispatch:
+  push:
+    tags: ['v*']
 permissions:
   contents: read
   id-token: write
 jobs:
-  publish:
-    runs-on: ubuntu-24.04
-    environment: npm
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14, target: aarch64-apple-darwin }
+          - { os: macos-14, target: x86_64-apple-darwin }
+          - { os: ubuntu-latest, target: aarch64-unknown-linux-gnu }
+          - { os: ubuntu-latest, target: aarch64-unknown-linux-musl }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with: { bun-version: "1.3.14" }
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: '${{ matrix.target }}' }
+      - uses: taiki-e/install-action@cross
+        if: runner.os == 'Linux'
+      - run: cargo build --release --target ${{ matrix.target }}
+        if: runner.os == 'macOS'
+      - run: cross build --release --target ${{ matrix.target }}
+        if: runner.os == 'Linux'
+      - uses: actions/upload-artifact@v4
         with:
-          node-version: "24"
-          registry-url: https://registry.npmjs.org
-      - name: Install test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes zsh
-      - run: bun install --frozen-lockfile
-      - run: bun run check
-      - run: bun run build
-      - run: bun run pack:check
-      - run: bun run publish:all
-        env:
-          CI: "true"
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          name: ${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/gwt
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: 'https://registry.npmjs.org' }
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - run: |
+          for target in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-gnu aarch64-unknown-linux-musl x86_64-unknown-linux-gnu x86_64-unknown-linux-musl; do
+            mkdir -p "target/$target/release"
+            cp "artifacts/$target/gwt" "target/$target/release/gwt"
+            chmod +x "target/$target/release/gwt"
+            cargo xtask stage "$target"
+          done
+      - run: cargo test --all && cargo xtask pack-check && cargo xtask sizes
+      - run: cargo install --path . --root /tmp/gwt-cargo-smoke --locked && /tmp/gwt-cargo-smoke/bin/gwt --version
+      - run: npm install --prefix /tmp/gwt-npm-smoke ./packages/gwt ./packages/gwt-* --force && /tmp/gwt-npm-smoke/node_modules/.bin/gwt --version
+      - run: for package in packages/gwt-*; do npm publish "./$package" --access public --provenance; done
+        env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }
+      - run: cargo publish --token '${{ secrets.CARGO_REGISTRY_TOKEN }}'
+      - run: npm publish ./packages/gwt --access public --provenance
+        env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }

@@ -2,25 +2,10 @@
   "name": "gwt-monorepo",
   "private": true,
   "version": "0.1.0",
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": ["packages/*"],
   "scripts": {
-    "build": "bun run scripts/build.ts",
-    "check": "bun run typecheck && bun test",
-    "pack:check": "bun run scripts/pack-check.ts",
-    "publish:all": "bun run scripts/publish.ts",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "@types/bun": "^1.3.0",
-    "typescript": "^5.9.0"
-  },
-  "engines": {
-    "bun": ">=1.2.0"
-  },
-  "dependencies": {
-    "picocolors": "^1.1.1"
+    "check": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --all",
+    "pack:check": "cargo xtask pack-check",
+    "versions:check": "cargo xtask verify-versions"
   }
 }
