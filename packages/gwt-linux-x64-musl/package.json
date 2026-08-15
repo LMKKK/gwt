@@ -1,1 +1,1 @@
-{"name":"@autumnk/gwt-linux-x64-musl","version":"0.1.0","description":"gwt binary for Linux x64 musl","license":"MIT","os":["linux"],"cpu":["x64"],"libc":["musl"],"files":["bin"],"publishConfig":{"access":"public","provenance":true}}
+{"name":"@autumnk/gwt-linux-x64-musl","version":"0.1.0","description":"gwt binary for Linux x64 musl","license":"MIT","repository":{"type":"git","url":"https://github.com/LMKKK/gwt","directory":"packages/gwt-linux-x64-musl"},"os":["linux"],"cpu":["x64"],"libc":["musl"],"files":["bin"],"publishConfig":{"access":"public","provenance":true}}
