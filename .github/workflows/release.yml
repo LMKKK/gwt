@@ -53,8 +53,141 @@ jobs:
       - run: cargo test --all && cargo xtask pack-check && cargo xtask sizes
       - run: cargo install --path . --root /tmp/gwt-cargo-smoke --locked && /tmp/gwt-cargo-smoke/bin/gwt --version
       - run: npm install --prefix /tmp/gwt-npm-smoke --install-links ./packages/gwt ./packages/gwt-* --force && /tmp/gwt-npm-smoke/node_modules/.bin/gwt --version
-      - run: for package in packages/gwt-*; do npm publish "./$package" --access public --provenance; done
+      - name: Publish npm packages
+        run: |
+          npm_version_state() {
+            local spec="$1"
+            local log_file="$2"
+
+            if npm view "$spec" version --json >"$log_file" 2>&1; then
+              return 0
+            fi
+            if grep -Eq 'E404|404 Not Found' "$log_file"; then
+              return 1
+            fi
+
+            cat "$log_file" >&2
+            return 2
+          }
+
+          wait_for_npm_version() {
+            local spec="$1"
+            local log_file
+            log_file="$(mktemp)"
+
+            for poll in {1..12}; do
+              if npm_version_state "$spec" "$log_file"; then
+                rm -f "$log_file"
+                return 0
+              else
+                local state=$?
+              fi
+
+              if [ "$state" -eq 2 ]; then
+                rm -f "$log_file"
+                return 1
+              fi
+
+              echo "Waiting for $spec to become visible ($poll/12)..."
+              sleep 5
+            done
+
+            echo "$spec was published but did not become visible within 60 seconds" >&2
+            rm -f "$log_file"
+            return 1
+          }
+
+          publish_npm_package() {
+            local package_dir="$1"
+            local name version spec lookup_log publish_log state delay
+            name="$(node -p "require('./$package_dir/package.json').name")"
+            version="$(node -p "require('./$package_dir/package.json').version")"
+            spec="$name@$version"
+            lookup_log="$(mktemp)"
+
+            if npm_version_state "$spec" "$lookup_log"; then
+              echo "$spec is already published; skipping"
+              rm -f "$lookup_log"
+              return 0
+            else
+              state=$?
+            fi
+
+            if [ "$state" -eq 2 ]; then
+              rm -f "$lookup_log"
+              return 1
+            fi
+            rm -f "$lookup_log"
+
+            for attempt in {1..5}; do
+              publish_log="$(mktemp)"
+              echo "Publishing $spec (attempt $attempt/5)..."
+              if npm publish "./$package_dir" --access public --provenance 2>&1 | tee "$publish_log"; then
+                rm -f "$publish_log"
+                wait_for_npm_version "$spec"
+                return $?
+              fi
+
+              lookup_log="$(mktemp)"
+              if npm_version_state "$spec" "$lookup_log"; then
+                echo "$spec became visible after the publish command failed; treating it as published"
+                rm -f "$lookup_log" "$publish_log"
+                return 0
+              else
+                state=$?
+              fi
+              if [ "$state" -eq 2 ]; then
+                rm -f "$lookup_log" "$publish_log"
+                return 1
+              fi
+              rm -f "$lookup_log"
+
+              if ! grep -Eq 'E409|409 Conflict|E429|429 Too Many Requests|E5[0-9]{2}|5[0-9]{2} (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)|ETIMEDOUT|ECONNRESET|EAI_AGAIN' "$publish_log"; then
+                echo "Permanent npm publish error for $spec; not retrying" >&2
+                rm -f "$publish_log"
+                return 1
+              fi
+              rm -f "$publish_log"
+
+              if [ "$attempt" -eq 5 ]; then
+                echo "npm publish retries exhausted for $spec" >&2
+                return 1
+              fi
+
+              delay=$((5 * (2 ** (attempt - 1))))
+              echo "Transient npm publish error for $spec; retrying in ${delay}s"
+              sleep "$delay"
+            done
+          }
+
+          for package in packages/gwt-* packages/gwt; do
+            publish_npm_package "$package"
+          done
         env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }
-      - run: cargo publish --token '${{ secrets.CARGO_REGISTRY_TOKEN }}'
-      - run: npm publish ./packages/gwt --access public --provenance
-        env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }
+      - name: Publish crate
+        run: |
+          metadata="$(cargo metadata --no-deps --format-version 1)"
+          crate_name="$(jq -r '.workspace_root as $root | .packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .name' <<<"$metadata")"
+          crate_version="$(jq -r '.workspace_root as $root | .packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .version' <<<"$metadata")"
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error \
+            --user-agent 'gwt-release-workflow/1.0 (https://github.com/LMKKK/gwt)' \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            "https://crates.io/api/v1/crates/$crate_name/$crate_version")"
+
+          case "$status" in
+            200)
+              echo "$crate_name@$crate_version is already published; skipping"
+              ;;
+            404)
+              cargo publish --locked
+              ;;
+            *)
+              echo "Unable to determine whether $crate_name@$crate_version is published (HTTP $status)" >&2
+              cat "$response_file" >&2
+              exit 1
+              ;;
+          esac
+          rm -f "$response_file"
+        env: { CARGO_REGISTRY_TOKEN: '${{ secrets.CARGO_REGISTRY_TOKEN }}' }
