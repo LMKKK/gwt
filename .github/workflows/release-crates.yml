@@ -1,0 +1,45 @@
+name: Release crates
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  publish:
+    name: Publish crate
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --all
+      - run: cargo package --locked
+      - run: cargo install --path . --root /tmp/gwt-cargo-smoke --locked && /tmp/gwt-cargo-smoke/bin/gwt --version
+      - name: Publish crate
+        run: |
+          metadata="$(cargo metadata --no-deps --format-version 1)"
+          crate_name="$(jq -r '.workspace_root as $root | .packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .name' <<<"$metadata")"
+          crate_version="$(jq -r '.workspace_root as $root | .packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .version' <<<"$metadata")"
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error \
+            --user-agent 'gwt-release-workflow/1.0 (https://github.com/LMKKK/gwt)' \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            "https://crates.io/api/v1/crates/$crate_name/$crate_version")"
+
+          case "$status" in
+            200)
+              echo "$crate_name@$crate_version is already published; skipping"
+              ;;
+            404)
+              cargo publish --locked
+              ;;
+            *)
+              echo "Unable to determine whether $crate_name@$crate_version is published (HTTP $status)" >&2
+              cat "$response_file" >&2
+              exit 1
+              ;;
+          esac
+          rm -f "$response_file"
+        env: { CARGO_REGISTRY_TOKEN: '${{ secrets.CARGO_REGISTRY_TOKEN }}' }

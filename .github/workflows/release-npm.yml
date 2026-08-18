@@ -1,4 +1,4 @@
-name: Release
+name: Release npm
 on:
   workflow_dispatch:
   push:
@@ -8,6 +8,7 @@ permissions:
   id-token: write
 jobs:
   build:
+    name: Build npm binary (${{ matrix.target }})
     strategy:
       matrix:
         include:
@@ -33,6 +34,7 @@ jobs:
           name: ${{ matrix.target }}
           path: target/${{ matrix.target }}/release/gwt
   publish:
+    name: Publish npm packages
     needs: build
     runs-on: ubuntu-latest
     environment: release
@@ -50,8 +52,7 @@ jobs:
             chmod +x "target/$target/release/gwt"
             cargo xtask stage "$target"
           done
-      - run: cargo test --all && cargo xtask pack-check && cargo xtask sizes
-      - run: cargo install --path . --root /tmp/gwt-cargo-smoke --locked && /tmp/gwt-cargo-smoke/bin/gwt --version
+      - run: cargo xtask pack-check && cargo xtask sizes
       - run: npm install --prefix /tmp/gwt-npm-smoke --install-links ./packages/gwt ./packages/gwt-* --force && /tmp/gwt-npm-smoke/node_modules/.bin/gwt --version
       - name: Publish npm packages
         run: |
@@ -164,30 +165,3 @@ jobs:
             publish_npm_package "$package"
           done
         env: { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' }
-      - name: Publish crate
-        run: |
-          metadata="$(cargo metadata --no-deps --format-version 1)"
-          crate_name="$(jq -r '.workspace_root as $root | .packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .name' <<<"$metadata")"
-          crate_version="$(jq -r '.workspace_root as $root | .packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .version' <<<"$metadata")"
-          response_file="$(mktemp)"
-          status="$(curl --silent --show-error \
-            --user-agent 'gwt-release-workflow/1.0 (https://github.com/LMKKK/gwt)' \
-            --output "$response_file" \
-            --write-out '%{http_code}' \
-            "https://crates.io/api/v1/crates/$crate_name/$crate_version")"
-
-          case "$status" in
-            200)
-              echo "$crate_name@$crate_version is already published; skipping"
-              ;;
-            404)
-              cargo publish --locked
-              ;;
-            *)
-              echo "Unable to determine whether $crate_name@$crate_version is published (HTTP $status)" >&2
-              cat "$response_file" >&2
-              exit 1
-              ;;
-          esac
-          rm -f "$response_file"
-        env: { CARGO_REGISTRY_TOKEN: '${{ secrets.CARGO_REGISTRY_TOKEN }}' }
