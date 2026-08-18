@@ -88,6 +88,9 @@ pub fn parse_worktrees(input: &[u8]) -> Vec<Worktree> {
     if let Some(item) = current {
         records.push(item);
     }
+    if let Some(item) = records.iter_mut().find(|item| !item.bare) {
+        item.main = true;
+    }
     records
 }
 

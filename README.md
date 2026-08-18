@@ -32,6 +32,8 @@ eval "$(gwt init bash)"
 
 Use `gwt list`, move with arrow keys or `j`/`k`, press Enter to select, and press `q` to cancel. Use `gwt new` to select an unused local branch, edit the new worktree path (the branch name is the default), create it, and switch to it. Relative paths are resolved from the directory where you invoked `gwt`; `~` and shell variables are not expanded.
 
+In the leftmost column, `M` marks Git's main worktree and `*` marks the worktree containing the current directory. `M*` means the main worktree is also current.
+
 The internal `gwt list --select` and `gwt new --select` commands print a selected or newly created absolute path for shell integration. Their interactive interfaces are written to stderr. Set `NO_COLOR` to disable color.
 
 ## Development

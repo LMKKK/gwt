@@ -65,8 +65,12 @@ fn lists_subdirectory_spaces_unicode_and_status() {
     fs::create_dir(&nested).unwrap();
     let list = git::list(&nested).unwrap();
     assert_eq!(list.len(), 2);
+    let main = list.iter().find(|w| w.main).unwrap();
+    assert_eq!(main.branch.as_deref(), Some("main"));
+    assert!(!main.current);
     let current = list.iter().find(|w| w.current).unwrap();
     assert_eq!(current.branch.as_deref(), Some("feature"));
+    assert!(!current.main);
     assert_eq!(
         current.status,
         Some(StatusCounts {
@@ -75,6 +79,15 @@ fn lists_subdirectory_spaces_unicode_and_status() {
             modified: 1,
             untracked: 1
         })
+    );
+    let rendered = autumnk_gwt::table::render(&list, usize::MAX, false, None);
+    assert!(
+        rendered.iter().any(|line| line.starts_with("M   main")),
+        "{rendered:#?}"
+    );
+    assert!(
+        rendered.iter().any(|line| line.starts_with("*   feature")),
+        "{rendered:#?}"
     )
 }
 #[test]
@@ -83,7 +96,8 @@ fn reports_bare_repo() {
     ok(&t.0, &["init", "--bare"]);
     let list = git::list(&t.0).unwrap();
     assert_eq!(list.len(), 1);
-    assert_eq!(list[0].availability, Availability::Bare)
+    assert_eq!(list[0].availability, Availability::Bare);
+    assert!(!list[0].main)
 }
 #[test]
 fn reports_not_a_repository() {

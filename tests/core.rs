@@ -14,6 +14,7 @@ fn clean() -> Worktree {
         bare: false,
         locked: None,
         prunable: None,
+        main: true,
         current: true,
         availability: Availability::Available,
         status: Some(StatusCounts::default()),
@@ -46,9 +47,12 @@ fn parses_worktree_porcelain() {
     assert_eq!(r.len(), 4);
     assert_eq!(r[0].branch.as_deref(), Some("main"));
     assert_eq!(r[0].locked.as_deref(), Some("maintenance"));
+    assert!(r[0].main);
     assert!(r[1].detached);
+    assert!(!r[1].main);
     assert_eq!(r[2].prunable.as_deref(), Some("gone"));
-    assert!(r[3].bare)
+    assert!(r[3].bare);
+    assert!(!r[3].main)
 }
 
 #[test]
@@ -89,13 +93,43 @@ fn status_and_table_are_compatible() {
     assert_eq!(
         table::render(&[w], usize::MAX, false, None),
         vec![
-            "   BRANCH  PATH                  COMMIT        STATUS",
-            "*  main    /repo/work tree-你好  1234567890ab  clean"
+            "    BRANCH  PATH                  COMMIT        STATUS",
+            "M*  main    /repo/work tree-你好  1234567890ab  clean"
         ]
     );
     assert!(
         unicode_width::UnicodeWidthStr::width(table::truncate("worktree-你好", 8).as_str()) <= 8
     )
+}
+
+#[test]
+fn renders_main_and_current_marker_combinations() {
+    let mut main_current = clean();
+    main_current.branch = Some("main-current".into());
+
+    let mut main_only = clean();
+    main_only.branch = Some("main-only".into());
+    main_only.current = false;
+
+    let mut current_only = clean();
+    current_only.branch = Some("current-only".into());
+    current_only.main = false;
+
+    let mut linked = clean();
+    linked.branch = Some("linked".into());
+    linked.main = false;
+    linked.current = false;
+
+    let output = table::render(
+        &[main_current, main_only, current_only, linked],
+        usize::MAX,
+        false,
+        None,
+    );
+    assert!(output[1].starts_with("M*  main-current"));
+    assert!(output[2].starts_with("M   main-only"));
+    assert!(output[3].starts_with("*   current-only"));
+    assert!(output[4].starts_with("    linked"));
 }
 #[test]
 fn keys_match() {

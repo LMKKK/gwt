@@ -44,7 +44,13 @@ pub fn render(
         .iter()
         .map(|w| {
             [
-                if w.current { "*" } else { "" }.into(),
+                match (w.main, w.current) {
+                    (true, true) => "M*",
+                    (true, false) => "M",
+                    (false, true) => "*",
+                    (false, false) => "",
+                }
+                .into(),
                 w.branch.clone().unwrap_or_else(|| "detached".into()),
                 w.path.clone(),
                 if w.head.is_empty() {
@@ -56,16 +62,16 @@ pub fn render(
             ]
         })
         .collect();
-    let mut widths = [0; 5];
+    let mins = [2, 3, 3, 4, 3];
+    let mut widths = mins;
     for (i, h) in HEADERS.iter().enumerate() {
-        widths[i] = width(h)
+        widths[i] = widths[i].max(width(h))
     }
     for row in &rows {
         for i in 0..5 {
             widths[i] = widths[i].max(width(&row[i]))
         }
     }
-    let mins = [1, 3, 3, 4, 3];
     while widths.iter().sum::<usize>() + 8 > terminal_width {
         let Some((i, _)) = widths
             .iter()
