@@ -1,7 +1,7 @@
 use autumnk_gwt::{
-    git::{parse_branches, parse_status, parse_worktrees},
+    git::{parse_branches, parse_status, parse_worktrees, remove_candidates},
     status, table,
-    tui::{parse_key, Key},
+    tui::{parse_confirm_key, parse_key, ConfirmKey, Key},
     types::{Availability, StatusCounts, Worktree},
 };
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -140,4 +140,80 @@ fn keys_match() {
         parse_key(KeyCode::Char('c'), KeyModifiers::CONTROL),
         Key::Cancel
     )
+}
+
+#[test]
+fn remove_candidates_exclude_unsafe_entries_but_keep_dirty_and_locked() {
+    let mut main = clean();
+    main.current = false;
+
+    let mut current = clean();
+    current.main = false;
+
+    let mut bare = clean();
+    bare.main = false;
+    bare.current = false;
+    bare.bare = true;
+    bare.availability = Availability::Bare;
+
+    let mut prunable = clean();
+    prunable.main = false;
+    prunable.current = false;
+    prunable.prunable = Some("gone".into());
+    prunable.availability = Availability::Prunable;
+
+    let mut unavailable = clean();
+    unavailable.main = false;
+    unavailable.current = false;
+    unavailable.availability = Availability::Unavailable;
+
+    let mut dirty = clean();
+    dirty.path = "/repo/dirty".into();
+    dirty.main = false;
+    dirty.current = false;
+    dirty.status = Some(StatusCounts {
+        modified: 1,
+        ..StatusCounts::default()
+    });
+
+    let mut locked = clean();
+    locked.path = "/repo/locked".into();
+    locked.main = false;
+    locked.current = false;
+    locked.locked = Some("maintenance".into());
+
+    let candidates = remove_candidates(&[
+        main,
+        current,
+        bare,
+        prunable,
+        unavailable,
+        dirty.clone(),
+        locked.clone(),
+    ]);
+    assert_eq!(candidates, vec![dirty, locked]);
+}
+
+#[test]
+fn remove_confirmation_only_accepts_y() {
+    for code in [KeyCode::Char('y'), KeyCode::Char('Y')] {
+        assert_eq!(parse_confirm_key(code, KeyModifiers::NONE), ConfirmKey::Yes);
+    }
+    for code in [
+        KeyCode::Enter,
+        KeyCode::Char('n'),
+        KeyCode::Char('N'),
+        KeyCode::Esc,
+        KeyCode::Char('q'),
+    ] {
+        assert_eq!(parse_confirm_key(code, KeyModifiers::NONE), ConfirmKey::No);
+    }
+    assert_eq!(
+        parse_confirm_key(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        ConfirmKey::No
+    );
+    assert_eq!(
+        parse_confirm_key(KeyCode::Char('x'), KeyModifiers::NONE),
+        ConfirmKey::Unknown
+    );
 }

@@ -177,3 +177,60 @@ fn counts_a_real_merge_conflict() {
         })
     );
 }
+
+fn repository_with_linked_worktree(tag: &str, linked_name: &str) -> (Temp, PathBuf, PathBuf) {
+    let t = Temp::new(tag);
+    let root = t.0.join("main");
+    fs::create_dir(&root).unwrap();
+    ok(&root, &["init", "-b", "main"]);
+    fs::write(root.join("tracked.txt"), "initial\n").unwrap();
+    ok(&root, &["add", "tracked.txt"]);
+    ok(&root, &["commit", "-m", "initial"]);
+    let linked = t.0.join(linked_name);
+    ok(
+        &root,
+        &["worktree", "add", "-b", "feature", linked.to_str().unwrap()],
+    );
+    (t, root, linked)
+}
+
+fn worktree_is_registered(root: &Path, path: &Path) -> bool {
+    let expected = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    git::list(root).unwrap().iter().any(|worktree| {
+        fs::canonicalize(&worktree.path).unwrap_or_else(|_| PathBuf::from(&worktree.path))
+            == expected
+    })
+}
+
+#[test]
+fn removes_clean_linked_worktree_with_spaces_and_unicode_but_keeps_branch() {
+    let (_t, root, linked) = repository_with_linked_worktree("remove", "work tree-你好");
+    git::remove_worktree(&root, &linked).unwrap();
+    assert!(!linked.exists());
+    assert!(!worktree_is_registered(&root, &linked));
+    let branches =
+        String::from_utf8(run(&root, &["branch", "--format=%(refname:short)"]).stdout).unwrap();
+    assert!(branches.lines().any(|branch| branch == "feature"));
+}
+
+#[test]
+fn dirty_worktree_removal_preserves_directory_and_registration() {
+    let (_t, root, linked) = repository_with_linked_worktree("remove-dirty", "dirty");
+    fs::write(linked.join("tracked.txt"), "changed\n").unwrap();
+    let error = git::remove_worktree(&root, &linked).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("contains modified or untracked files"));
+    assert!(linked.is_dir());
+    assert!(worktree_is_registered(&root, &linked));
+}
+
+#[test]
+fn locked_worktree_removal_preserves_directory_and_registration() {
+    let (_t, root, linked) = repository_with_linked_worktree("remove-locked", "locked");
+    ok(&root, &["worktree", "lock", linked.to_str().unwrap()]);
+    let error = git::remove_worktree(&root, &linked).unwrap_err();
+    assert!(error.to_string().contains("locked"));
+    assert!(linked.is_dir());
+    assert!(worktree_is_registered(&root, &linked));
+}

@@ -2,7 +2,7 @@ use crate::{git, shell, table, tui};
 use std::io::{self, IsTerminal, Write};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 fn help() -> String {
-    format!("gwt {VERSION} — switch between Git worktrees\n\nUsage:\n  gwt list          List and switch between worktrees\n  gwt new           Create and switch to a worktree (shell integration required)\n  gwt init zsh      Print zsh integration\n  gwt init bash     Print bash integration\n  gwt --help        Show help\n  gwt --version     Show version\n\nInstall shell integration so list and new can change the current directory:\n  eval \"$(gwt init zsh)\"\n  eval \"$(gwt init bash)\"")
+    format!("gwt {VERSION} — switch between Git worktrees\n\nUsage:\n  gwt list          List and switch between worktrees\n  gwt new           Create and switch to a worktree (shell integration required)\n  gwt remove        Interactively remove a linked worktree\n  gwt init zsh      Print zsh integration\n  gwt init bash     Print bash integration\n  gwt --help        Show help\n  gwt --version     Show version\n\nInstall shell integration so list and new can change the current directory:\n  eval \"$(gwt init zsh)\"\n  eval \"$(gwt init bash)\"")
 }
 pub fn run(args: Vec<String>) -> u8 {
     match run_inner(&args) {
@@ -96,6 +96,31 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
             };
             git::add_worktree(&cwd, &absolute, &branch)?;
             println!("{}", absolute.display());
+            Ok(0)
+        }
+        Some("remove") => {
+            if args.len() != 1 {
+                eprintln!("Usage: gwt remove");
+                return Ok(2);
+            }
+            if !(io::stdin().is_terminal() && io::stderr().is_terminal()) {
+                eprintln!("gwt remove requires an interactive terminal on stdin and stderr.");
+                return Ok(2);
+            }
+            let cwd = git::cwd()?;
+            let candidates = git::remove_candidates(&git::list(&cwd)?);
+            if candidates.is_empty() {
+                return Err("No removable linked worktrees. Main, current, prunable, bare, and unavailable worktrees cannot be removed here.".into());
+            }
+            let Some(worktree) = tui::select_remove(&candidates)? else {
+                return Ok(0);
+            };
+            if !tui::confirm_remove(&worktree)? {
+                return Ok(0);
+            }
+            let path = std::path::Path::new(&worktree.path);
+            git::remove_worktree(&cwd, path)?;
+            println!("Removed {}", path.display());
             Ok(0)
         }
         Some(other) => {

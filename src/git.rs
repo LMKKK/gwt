@@ -156,6 +156,20 @@ pub fn available_branches(cwd: &Path) -> Result<Vec<String>, GitError> {
         .collect())
 }
 
+pub fn remove_candidates(worktrees: &[Worktree]) -> Vec<Worktree> {
+    worktrees
+        .iter()
+        .filter(|worktree| {
+            !worktree.main
+                && !worktree.current
+                && !worktree.bare
+                && worktree.prunable.is_none()
+                && worktree.availability == Availability::Available
+        })
+        .cloned()
+        .collect()
+}
+
 pub fn add_worktree(cwd: &Path, path: &Path, branch: &str) -> Result<(), GitError> {
     let output = Command::new("git")
         .args(["worktree", "add"])
@@ -180,6 +194,31 @@ pub fn add_worktree(cwd: &Path, path: &Path, branch: &str) -> Result<(), GitErro
     } else {
         format!(
             "Git command failed: git worktree add {} {branch}\n{detail}",
+            path.display()
+        )
+    }))
+}
+
+pub fn remove_worktree(cwd: &Path, path: &Path) -> Result<(), GitError> {
+    let output = Command::new("git")
+        .args(["worktree", "remove"])
+        .arg(path)
+        .current_dir(cwd)
+        .output()
+        .map_err(|_| {
+            GitError(
+                "Unable to run Git. Make sure 'git' is installed and available in PATH.".into(),
+            )
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    Err(GitError(if detail.is_empty() {
+        format!("Git command failed: git worktree remove {}", path.display())
+    } else {
+        format!(
+            "Git command failed: git worktree remove {}\n{detail}",
             path.display()
         )
     }))

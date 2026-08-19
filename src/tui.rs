@@ -47,6 +47,26 @@ impl Drop for Guard {
     }
 }
 pub fn select(worktrees: &[Worktree], stderr: bool) -> io::Result<Option<String>> {
+    select_worktree(worktrees, stderr, None, "select")
+        .map(|selected| selected.map(|worktree| worktree.path.clone()))
+}
+
+pub fn select_remove(worktrees: &[Worktree]) -> io::Result<Option<Worktree>> {
+    select_worktree(
+        worktrees,
+        true,
+        Some("Select a worktree to remove:"),
+        "remove",
+    )
+    .map(|selected| selected.cloned())
+}
+
+fn select_worktree<'a>(
+    worktrees: &'a [Worktree],
+    stderr: bool,
+    title: Option<&str>,
+    action: &str,
+) -> io::Result<Option<&'a Worktree>> {
     if worktrees.is_empty() {
         return Ok(None);
     }
@@ -66,20 +86,24 @@ pub fn select(worktrees: &[Worktree], stderr: bool) -> io::Result<Option<String>
         }
         execute!(output, Hide)?;
         let theme = Theme { color };
-        let mut lines = table::render(
+        let table_lines = table::render(
             worktrees,
             git::terminal_width().saturating_sub(2),
             color,
             Some(selected),
         );
-        for (i, line) in lines.iter_mut().enumerate() {
+        let mut lines = Vec::new();
+        if let Some(title) = title {
+            lines.push(theme.hint(title));
+        }
+        lines.extend(table_lines.into_iter().enumerate().map(|(i, line)| {
             let marker = if i > 0 && i - 1 == selected {
                 theme.selected("> ")
             } else {
                 "  ".into()
             };
-            *line = format!("{marker}{line}")
-        }
+            format!("{marker}{line}")
+        }));
         lines.push(format!(
             "{}{}{}{}{}{}{}{}",
             theme.key("↑/↓"),
@@ -87,7 +111,7 @@ pub fn select(worktrees: &[Worktree], stderr: bool) -> io::Result<Option<String>
             theme.key("j/k"),
             theme.hint(" move • "),
             theme.key("Enter"),
-            theme.hint(" select • "),
+            theme.hint(&format!(" {action} • ")),
             theme.key("q"),
             theme.hint(" cancel")
         ));
@@ -100,10 +124,57 @@ pub fn select(worktrees: &[Worktree], stderr: bool) -> io::Result<Option<String>
         {
             match parse_key(code, modifiers) {
                 Key::Cancel => return Ok(None),
-                Key::Select => return Ok(Some(worktrees[selected].path.clone())),
+                Key::Select => return Ok(Some(&worktrees[selected])),
                 Key::Up => selected = (selected + worktrees.len() - 1) % worktrees.len(),
                 Key::Down => selected = (selected + 1) % worktrees.len(),
                 Key::Unknown => {}
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConfirmKey {
+    Yes,
+    No,
+    Unknown,
+}
+
+pub fn parse_confirm_key(code: KeyCode, modifiers: KeyModifiers) -> ConfirmKey {
+    if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('c') {
+        return ConfirmKey::No;
+    }
+    match code {
+        KeyCode::Char('y' | 'Y') => ConfirmKey::Yes,
+        KeyCode::Enter | KeyCode::Esc | KeyCode::Char('n' | 'N' | 'q') => ConfirmKey::No,
+        _ => ConfirmKey::Unknown,
+    }
+}
+
+pub fn confirm_remove(worktree: &Worktree) -> io::Result<bool> {
+    let branch = worktree.branch.as_deref().unwrap_or("detached");
+    let mut output = io::stderr();
+    writeln!(output, "Branch: {branch}")?;
+    writeln!(output, "Path: {}", worktree.path)?;
+    write!(output, "Remove this worktree? [y/N] ")?;
+    output.flush()?;
+    enable_raw_mode()?;
+    let _guard = Guard(true);
+    loop {
+        if let Event::Key(KeyEvent {
+            code, modifiers, ..
+        }) = event::read()?
+        {
+            match parse_confirm_key(code, modifiers) {
+                ConfirmKey::Yes => {
+                    writeln!(output, "y")?;
+                    return Ok(true);
+                }
+                ConfirmKey::No => {
+                    writeln!(output)?;
+                    return Ok(false);
+                }
+                ConfirmKey::Unknown => {}
             }
         }
     }
