@@ -78,14 +78,14 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
                 return Ok(2);
             }
             let cwd = git::cwd()?;
-            let branches = git::available_branches(&cwd)?;
+            let branches = git::branch_candidates(&cwd)?;
             if branches.is_empty() {
-                return Err("No available local branches. Every local branch is already checked out in a worktree.".into());
+                return Err("No local branches found.".into());
             }
             let Some(branch) = tui::select_branch(&branches)? else {
                 return Ok(0);
             };
-            let Some(input) = tui::input_path(&branch)? else {
+            let Some(input) = tui::input_path(&branch.name)? else {
                 return Ok(0);
             };
             let path = std::path::Path::new(&input);
@@ -94,7 +94,7 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
             } else {
                 cwd.join(path)
             };
-            git::add_worktree(&cwd, &absolute, &branch)?;
+            git::add_worktree(&cwd, &absolute, &branch.name)?;
             println!("{}", absolute.display());
             Ok(0)
         }

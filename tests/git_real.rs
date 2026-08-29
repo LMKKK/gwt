@@ -121,6 +121,29 @@ fn filters_occupied_branches_and_creates_relative_to_cwd() {
     ok(&root, &["branch", "unicode-你好"]);
 
     assert_eq!(
+        git::branch_candidates(&root).unwrap(),
+        vec![
+            autumnk_gwt::types::BranchCandidate {
+                name: "feature/one".into(),
+                occupied_by: None,
+            },
+            autumnk_gwt::types::BranchCandidate {
+                name: "main".into(),
+                occupied_by: Some(
+                    fs::canonicalize(&root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned()
+                ),
+            },
+            autumnk_gwt::types::BranchCandidate {
+                name: "unicode-你好".into(),
+                occupied_by: None,
+            },
+        ]
+    );
+
+    assert_eq!(
         git::available_branches(&root).unwrap(),
         vec!["feature/one", "unicode-你好"]
     );
@@ -136,6 +159,20 @@ fn filters_occupied_branches_and_creates_relative_to_cwd() {
         "unicode-你好"
     );
     assert_eq!(git::available_branches(&root).unwrap(), vec!["feature/one"]);
+    let candidates = git::branch_candidates(&root).unwrap();
+    let unicode = candidates
+        .iter()
+        .find(|branch| branch.name == "unicode-你好")
+        .unwrap();
+    assert_eq!(
+        unicode.occupied_by.as_deref(),
+        Some(
+            fs::canonicalize(&destination)
+                .unwrap()
+                .to_string_lossy()
+                .as_ref()
+        )
+    );
 }
 
 #[test]

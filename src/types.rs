@@ -15,6 +15,18 @@ pub struct StatusCounts {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchCandidate {
+    pub name: String,
+    pub occupied_by: Option<String>,
+}
+
+impl BranchCandidate {
+    pub fn available(&self) -> bool {
+        self.occupied_by.is_none()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Worktree {
     pub path: String,
     pub head: String,

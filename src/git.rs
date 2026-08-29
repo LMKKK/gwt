@@ -1,6 +1,6 @@
-use crate::types::{Availability, StatusCounts, Worktree};
+use crate::types::{Availability, BranchCandidate, StatusCounts, Worktree};
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     fs, io,
     path::{Path, PathBuf},
     process::Command,
@@ -140,19 +140,30 @@ pub fn list(cwd: &Path) -> Result<Vec<Worktree>, GitError> {
 }
 
 pub fn available_branches(cwd: &Path) -> Result<Vec<String>, GitError> {
+    Ok(branch_candidates(cwd)?
+        .into_iter()
+        .filter(BranchCandidate::available)
+        .map(|branch| branch.name)
+        .collect())
+}
+
+pub fn branch_candidates(cwd: &Path) -> Result<Vec<BranchCandidate>, GitError> {
     let runner = SystemGit;
     let branches = parse_branches(&runner.run(
         &["for-each-ref", "--format=%(refname:short)", "refs/heads"],
         cwd,
     )?);
-    let occupied: HashSet<String> =
+    let occupied: HashMap<String, String> =
         parse_worktrees(&runner.run(&["worktree", "list", "--porcelain", "-z"], cwd)?)
             .into_iter()
-            .filter_map(|worktree| worktree.branch)
+            .filter_map(|worktree| worktree.branch.map(|branch| (branch, worktree.path)))
             .collect();
     Ok(branches
         .into_iter()
-        .filter(|branch| !occupied.contains(branch))
+        .map(|name| BranchCandidate {
+            occupied_by: occupied.get(&name).cloned(),
+            name,
+        })
         .collect())
 }
 

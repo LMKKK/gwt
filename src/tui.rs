@@ -1,4 +1,8 @@
-use crate::{git, table, theme::Theme, types::Worktree};
+use crate::{
+    git, table,
+    theme::Theme,
+    types::{BranchCandidate, Worktree},
+};
 use crossterm::{
     cursor::{Hide, MoveToColumn, MoveUp, Show},
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
@@ -180,13 +184,59 @@ pub fn confirm_remove(worktree: &Worktree) -> io::Result<bool> {
     }
 }
 
-pub fn select_branch(branches: &[String]) -> io::Result<Option<String>> {
+fn first_available(branches: &[BranchCandidate]) -> Option<usize> {
+    branches.iter().position(BranchCandidate::available)
+}
+
+fn move_branch_selection(branches: &[BranchCandidate], selected: usize, direction: isize) -> usize {
+    let mut next = selected;
+    for _ in 0..branches.len() {
+        next = (next as isize + direction).rem_euclid(branches.len() as isize) as usize;
+        if branches[next].available() {
+            return next;
+        }
+    }
+    selected
+}
+
+fn render_branch_lines(
+    branches: &[BranchCandidate],
+    selected: Option<usize>,
+    terminal_width: usize,
+    color: bool,
+) -> Vec<String> {
+    let theme = Theme { color };
+    branches
+        .iter()
+        .enumerate()
+        .map(|(index, branch)| {
+            let marker = if selected == Some(index) {
+                theme.selected("> ")
+            } else {
+                "  ".into()
+            };
+            let row = match &branch.occupied_by {
+                Some(path) => format!("{}  in use: {path}", branch.name),
+                None => branch.name.clone(),
+            };
+            let row = table::truncate(&row, terminal_width.saturating_sub(2));
+            let row = if branch.available() {
+                row
+            } else {
+                theme.hint(&row)
+            };
+            format!("{marker}{row}")
+        })
+        .collect()
+}
+
+pub fn select_branch(branches: &[BranchCandidate]) -> io::Result<Option<BranchCandidate>> {
     if branches.is_empty() {
         return Ok(None);
     }
     let color = std::env::var_os("NO_COLOR").is_none();
     let theme = Theme { color };
-    let mut selected = 0;
+    let mut selected = first_available(branches);
     enable_raw_mode()?;
     let _guard = Guard(true);
     let mut rendered = 0;
@@ -197,25 +247,32 @@ pub fn select_branch(branches: &[String]) -> io::Result<Option<String>> {
         }
         execute!(output, Hide)?;
         let mut lines = vec![theme.hint("Select a local branch:")];
-        lines.extend(branches.iter().enumerate().map(|(index, branch)| {
-            let marker = if index == selected {
-                theme.selected("> ")
-            } else {
-                "  ".into()
-            };
-            format!("{marker}{branch}")
-        }));
-        lines.push(format!(
-            "{}{}{}{}{}{}{}{}",
-            theme.key("↑/↓"),
-            theme.hint(" or "),
-            theme.key("j/k"),
-            theme.hint(" move • "),
-            theme.key("Enter"),
-            theme.hint(" select • "),
-            theme.key("q"),
-            theme.hint(" cancel")
+        lines.extend(render_branch_lines(
+            branches,
+            selected,
+            git::terminal_width(),
+            color,
         ));
+        if selected.is_some() {
+            lines.push(format!(
+                "{}{}{}{}{}{}{}{}",
+                theme.key("↑/↓"),
+                theme.hint(" or "),
+                theme.key("j/k"),
+                theme.hint(" move • "),
+                theme.key("Enter"),
+                theme.hint(" select • "),
+                theme.key("q"),
+                theme.hint(" cancel")
+            ));
+        } else {
+            lines.push(format!(
+                "{}{}{}",
+                theme.hint("No available local branches • "),
+                theme.key("q"),
+                theme.hint(" cancel")
+            ));
+        }
         write_lines(&mut output, &lines)?;
         output.flush()?;
         rendered = lines.len();
@@ -225,9 +282,21 @@ pub fn select_branch(branches: &[String]) -> io::Result<Option<String>> {
         {
             match parse_key(code, modifiers) {
                 Key::Cancel => return Ok(None),
-                Key::Select => return Ok(Some(branches[selected].clone())),
-                Key::Up => selected = (selected + branches.len() - 1) % branches.len(),
-                Key::Down => selected = (selected + 1) % branches.len(),
+                Key::Select => {
+                    if let Some(index) = selected {
+                        return Ok(Some(branches[index].clone()));
+                    }
+                }
+                Key::Up => {
+                    if let Some(index) = selected {
+                        selected = Some(move_branch_selection(branches, index, -1));
+                    }
+                }
+                Key::Down => {
+                    if let Some(index) = selected {
+                        selected = Some(move_branch_selection(branches, index, 1));
+                    }
+                }
                 Key::Unknown => {}
             }
         }
@@ -322,7 +391,10 @@ pub fn input_path(default: &str) -> io::Result<Option<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{write_lines, PathEditor};
+    use super::{
+        first_available, move_branch_selection, render_branch_lines, write_lines, PathEditor,
+    };
+    use crate::types::BranchCandidate;
     use crossterm::event::{KeyCode, KeyModifiers};
 
     #[test]
@@ -350,5 +422,42 @@ mod tests {
     fn empty_path_cannot_be_submitted() {
         let mut editor = PathEditor::new(String::new());
         assert_eq!(editor.apply(KeyCode::Enter, KeyModifiers::NONE), None);
+    }
+
+    fn branch(name: &str, occupied_by: Option<&str>) -> BranchCandidate {
+        BranchCandidate {
+            name: name.into(),
+            occupied_by: occupied_by.map(Into::into),
+        }
+    }
+
+    #[test]
+    fn branch_navigation_skips_occupied_entries_and_wraps() {
+        let branches = [
+            branch("main", Some("/repo")),
+            branch("one", None),
+            branch("two", Some("/repo/two")),
+            branch("three", None),
+        ];
+        assert_eq!(first_available(&branches), Some(1));
+        assert_eq!(move_branch_selection(&branches, 1, 1), 3);
+        assert_eq!(move_branch_selection(&branches, 3, 1), 1);
+        assert_eq!(move_branch_selection(&branches, 1, -1), 3);
+    }
+
+    #[test]
+    fn all_occupied_branches_have_no_selection() {
+        let branches = [branch("main", Some("/repo"))];
+        assert_eq!(first_available(&branches), None);
+    }
+
+    #[test]
+    fn occupied_branch_rendering_includes_path_and_respects_width() {
+        let branches = [branch("main", Some("/repo/work tree-你好"))];
+        let full = render_branch_lines(&branches, None, usize::MAX, false);
+        assert_eq!(full, vec!["  main  in use: /repo/work tree-你好"]);
+        let narrow = render_branch_lines(&branches, None, 18, false);
+        assert!(unicode_width::UnicodeWidthStr::width(narrow[0].as_str()) <= 18);
+        assert!(narrow[0].ends_with('…'));
     }
 }
