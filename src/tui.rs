@@ -364,19 +364,26 @@ fn char_byte_index(value: &str, character: usize) -> usize {
         .map_or(value.len(), |(i, _)| i)
 }
 
+fn render_path_editor<W: Write>(output: &mut W, editor: &PathEditor) -> io::Result<()> {
+    execute!(output, MoveToColumn(0), Clear(ClearType::CurrentLine))?;
+    write!(output, "Worktree path: {}", editor.value)?;
+    let cursor_byte = char_byte_index(&editor.value, editor.cursor);
+    let column = "Worktree path: ".len() + editor.value[..cursor_byte].width();
+    execute!(
+        output,
+        MoveToColumn(column.min(u16::MAX as usize) as u16),
+        Show
+    )?;
+    output.flush()
+}
+
 pub fn input_path(default: &str) -> io::Result<Option<String>> {
     let mut editor = PathEditor::new(default.to_owned());
     enable_raw_mode()?;
     let _guard = Guard(true);
     let mut output = io::stderr();
-    execute!(output, Hide)?;
     loop {
-        execute!(output, MoveToColumn(0), Clear(ClearType::CurrentLine))?;
-        write!(output, "Worktree path: {}", editor.value)?;
-        let cursor_byte = char_byte_index(&editor.value, editor.cursor);
-        let column = "Worktree path: ".len() + editor.value[..cursor_byte].width();
-        execute!(output, MoveToColumn(column.min(u16::MAX as usize) as u16))?;
-        output.flush()?;
+        render_path_editor(&mut output, &editor)?;
         if let Event::Key(KeyEvent {
             code, modifiers, ..
         }) = event::read()?
@@ -389,10 +396,15 @@ pub fn input_path(default: &str) -> io::Result<Option<String>> {
     }
 }
 
+pub fn default_worktree_path(project_name: &str, branch_name: &str) -> String {
+    format!("../{project_name}_{}", branch_name.replace('/', "_"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        first_available, move_branch_selection, render_branch_lines, write_lines, PathEditor,
+        default_worktree_path, first_available, move_branch_selection, render_branch_lines,
+        render_path_editor, write_lines, PathEditor,
     };
     use crate::types::BranchCandidate;
     use crossterm::event::{KeyCode, KeyModifiers};
@@ -422,6 +434,22 @@ mod tests {
     fn empty_path_cannot_be_submitted() {
         let mut editor = PathEditor::new(String::new());
         assert_eq!(editor.apply(KeyCode::Enter, KeyModifiers::NONE), None);
+    }
+
+    #[test]
+    fn default_path_includes_project_and_sanitized_branch_name() {
+        assert_eq!(default_worktree_path("gwt", "main"), "../gwt_main");
+        assert_eq!(
+            default_worktree_path("项目", "feature/user/profile"),
+            "../项目_feature_user_profile"
+        );
+    }
+
+    #[test]
+    fn path_editor_rendering_shows_the_terminal_cursor() {
+        let mut output = Vec::new();
+        render_path_editor(&mut output, &PathEditor::new("分支".into())).unwrap();
+        assert!(output.windows(6).any(|bytes| bytes == b"\x1b[?25h"));
     }
 
     fn branch(name: &str, occupied_by: Option<&str>) -> BranchCandidate {

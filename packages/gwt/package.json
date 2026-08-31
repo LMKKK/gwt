@@ -1,6 +1,6 @@
 {
   "name": "@autumnk/gwt",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A fast interactive Git worktree switcher",
   "license": "MIT",
   "repository": {
@@ -17,12 +17,12 @@
     "provenance": true
   },
   "optionalDependencies": {
-    "@autumnk/gwt-darwin-arm64": "0.1.3",
-    "@autumnk/gwt-darwin-x64": "0.1.3",
-    "@autumnk/gwt-linux-arm64-gnu": "0.1.3",
-    "@autumnk/gwt-linux-arm64-musl": "0.1.3",
-    "@autumnk/gwt-linux-x64-gnu": "0.1.3",
-    "@autumnk/gwt-linux-x64-musl": "0.1.3"
+    "@autumnk/gwt-darwin-arm64": "0.1.4",
+    "@autumnk/gwt-darwin-x64": "0.1.4",
+    "@autumnk/gwt-linux-arm64-gnu": "0.1.4",
+    "@autumnk/gwt-linux-arm64-musl": "0.1.4",
+    "@autumnk/gwt-linux-x64-gnu": "0.1.4",
+    "@autumnk/gwt-linux-x64-musl": "0.1.4"
   },
   "engines": {
     "node": ">=18"

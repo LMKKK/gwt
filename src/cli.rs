@@ -85,7 +85,9 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
             let Some(branch) = tui::select_branch(&branches)? else {
                 return Ok(0);
             };
-            let Some(input) = tui::input_path(&branch.name)? else {
+            let project_name = git::main_worktree_name(&cwd)?;
+            let default_path = tui::default_worktree_path(&project_name, &branch.name);
+            let Some(input) = tui::input_path(&default_path)? else {
                 return Ok(0);
             };
             let path = std::path::Path::new(&input);

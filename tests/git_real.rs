@@ -120,6 +120,8 @@ fn filters_occupied_branches_and_creates_relative_to_cwd() {
     ok(&root, &["branch", "feature/one"]);
     ok(&root, &["branch", "unicode-你好"]);
 
+    assert_eq!(git::main_worktree_name(&root).unwrap(), "main");
+
     assert_eq!(
         git::branch_candidates(&root).unwrap(),
         vec![
@@ -150,9 +152,11 @@ fn filters_occupied_branches_and_creates_relative_to_cwd() {
 
     let nested = root.join("nested");
     fs::create_dir(&nested).unwrap();
+    assert_eq!(git::main_worktree_name(&nested).unwrap(), "main");
     let destination = nested.join("work tree-你好");
     git::add_worktree(&nested, &destination, "unicode-你好").unwrap();
     assert!(destination.is_dir());
+    assert_eq!(git::main_worktree_name(&destination).unwrap(), "main");
     let branch = run(&destination, &["branch", "--show-current"]);
     assert_eq!(
         String::from_utf8_lossy(&branch.stdout).trim(),

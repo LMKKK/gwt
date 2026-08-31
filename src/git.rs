@@ -167,6 +167,20 @@ pub fn branch_candidates(cwd: &Path) -> Result<Vec<BranchCandidate>, GitError> {
         .collect())
 }
 
+pub fn main_worktree_name(cwd: &Path) -> Result<String, GitError> {
+    let runner = SystemGit;
+    let worktrees = parse_worktrees(&runner.run(&["worktree", "list", "--porcelain", "-z"], cwd)?);
+    let main = worktrees
+        .iter()
+        .find(|worktree| worktree.main)
+        .ok_or_else(|| GitError("Unable to determine the main worktree.".into()))?;
+    Path::new(&main.path)
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .map(|name| name.to_string_lossy().into_owned())
+        .ok_or_else(|| GitError("Unable to determine the main worktree name.".into()))
+}
+
 pub fn remove_candidates(worktrees: &[Worktree]) -> Vec<Worktree> {
     worktrees
         .iter()
