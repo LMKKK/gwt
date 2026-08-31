@@ -219,15 +219,20 @@ fn render_branch_lines(
             } else {
                 "  ".into()
             };
+            let width = terminal_width.saturating_sub(2);
             let row = match &branch.occupied_by {
-                Some(path) => format!("{}  in use: {path}", branch.name),
-                None => branch.name.clone(),
-            };
-            let row = table::truncate(&row, terminal_width.saturating_sub(2));
-            let row = if branch.available() {
-                row
-            } else {
-                theme.hint(&row)
+                Some(path) => {
+                    let row = table::truncate(&format!("{}  in use: {path}", branch.name), width);
+                    match row.strip_prefix(&branch.name) {
+                        Some(annotation) => format!(
+                            "{}{}",
+                            theme.occupied_branch(&branch.name),
+                            theme.hint(annotation)
+                        ),
+                        None => theme.occupied_branch(&row),
+                    }
+                }
+                None => table::truncate(&branch.name, width),
             };
             format!("{marker}{row}")
         })
@@ -508,6 +513,23 @@ mod tests {
         assert!(unicode_width::UnicodeWidthStr::width(narrow[0].as_str()) <= 18);
         assert!(narrow[0].ends_with('…'));
         assert!(unicode_width::UnicodeWidthStr::width(narrow[1].as_str()) <= 18);
+
+        let colored = render_branch_lines(&branches, None, usize::MAX, true);
+        assert_eq!(
+            colored[0],
+            "  \x1b[33mmain\x1b[0m\x1b[2m  in use: /repo/work tree-你好\x1b[0m"
+        );
+        assert!(colored[0].contains("\x1b[33mmain\x1b[0m"));
+        assert!(!full[0].contains('\x1b'));
+    }
+
+    #[test]
+    fn occupied_branch_name_stays_colored_when_truncated() {
+        let branches = [branch("feature/你好", Some("/repo"))];
+        assert_eq!(
+            render_branch_lines(&branches, None, 8, true)[0],
+            "  \x1b[33mfeatu…\x1b[0m"
+        );
     }
 
     #[test]

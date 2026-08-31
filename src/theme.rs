@@ -22,6 +22,9 @@ impl Theme {
     pub fn branch(&self, s: &str) -> String {
         self.wrap("36", s)
     }
+    pub fn occupied_branch(&self, s: &str) -> String {
+        self.wrap("33", s)
+    }
     pub fn detached(&self, s: &str) -> String {
         self.wrap("33", s)
     }
