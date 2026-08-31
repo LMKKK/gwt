@@ -1,7 +1,7 @@
 use crate::{
     git, table,
     theme::Theme,
-    types::{BranchCandidate, Worktree},
+    types::{BranchCandidate, BranchSelection, Worktree},
 };
 use crossterm::{
     cursor::{Hide, MoveToColumn, MoveUp, Show},
@@ -184,15 +184,19 @@ pub fn confirm_remove(worktree: &Worktree) -> io::Result<bool> {
     }
 }
 
-fn first_available(branches: &[BranchCandidate]) -> Option<usize> {
-    branches.iter().position(BranchCandidate::available)
+fn first_available(branches: &[BranchCandidate]) -> usize {
+    branches
+        .iter()
+        .position(BranchCandidate::available)
+        .unwrap_or(branches.len())
 }
 
 fn move_branch_selection(branches: &[BranchCandidate], selected: usize, direction: isize) -> usize {
     let mut next = selected;
-    for _ in 0..branches.len() {
-        next = (next as isize + direction).rem_euclid(branches.len() as isize) as usize;
-        if branches[next].available() {
+    let count = branches.len() + 1;
+    for _ in 0..count {
+        next = (next as isize + direction).rem_euclid(count as isize) as usize;
+        if next == branches.len() || branches[next].available() {
             return next;
         }
     }
@@ -206,7 +210,7 @@ fn render_branch_lines(
     color: bool,
 ) -> Vec<String> {
     let theme = Theme { color };
-    branches
+    let mut lines: Vec<String> = branches
         .iter()
         .enumerate()
         .map(|(index, branch)| {
@@ -227,13 +231,19 @@ fn render_branch_lines(
             };
             format!("{marker}{row}")
         })
-        .collect()
+        .collect();
+    let index = branches.len();
+    let marker = if selected == Some(index) {
+        theme.selected("> ")
+    } else {
+        "  ".into()
+    };
+    let row = table::truncate("Create new branch...", terminal_width.saturating_sub(2));
+    lines.push(format!("{marker}{}", theme.branch(&row)));
+    lines
 }
 
-pub fn select_branch(branches: &[BranchCandidate]) -> io::Result<Option<BranchCandidate>> {
-    if branches.is_empty() {
-        return Ok(None);
-    }
+pub fn select_branch(branches: &[BranchCandidate]) -> io::Result<Option<BranchSelection>> {
     let color = std::env::var_os("NO_COLOR").is_none();
     let theme = Theme { color };
     let mut selected = first_available(branches);
@@ -246,33 +256,24 @@ pub fn select_branch(branches: &[BranchCandidate]) -> io::Result<Option<BranchCa
             execute!(output, MoveUp(rendered as u16), MoveToColumn(0))?;
         }
         execute!(output, Hide)?;
-        let mut lines = vec![theme.hint("Select a local branch:")];
+        let mut lines = vec![theme.hint("Select a local branch or create one:")];
         lines.extend(render_branch_lines(
             branches,
-            selected,
+            Some(selected),
             git::terminal_width(),
             color,
         ));
-        if selected.is_some() {
-            lines.push(format!(
-                "{}{}{}{}{}{}{}{}",
-                theme.key("↑/↓"),
-                theme.hint(" or "),
-                theme.key("j/k"),
-                theme.hint(" move • "),
-                theme.key("Enter"),
-                theme.hint(" select • "),
-                theme.key("q"),
-                theme.hint(" cancel")
-            ));
-        } else {
-            lines.push(format!(
-                "{}{}{}",
-                theme.hint("No available local branches • "),
-                theme.key("q"),
-                theme.hint(" cancel")
-            ));
-        }
+        lines.push(format!(
+            "{}{}{}{}{}{}{}{}",
+            theme.key("↑/↓"),
+            theme.hint(" or "),
+            theme.key("j/k"),
+            theme.hint(" move • "),
+            theme.key("Enter"),
+            theme.hint(" select • "),
+            theme.key("q"),
+            theme.hint(" cancel")
+        ));
         write_lines(&mut output, &lines)?;
         output.flush()?;
         rendered = lines.len();
@@ -283,19 +284,17 @@ pub fn select_branch(branches: &[BranchCandidate]) -> io::Result<Option<BranchCa
             match parse_key(code, modifiers) {
                 Key::Cancel => return Ok(None),
                 Key::Select => {
-                    if let Some(index) = selected {
-                        return Ok(Some(branches[index].clone()));
-                    }
+                    return Ok(Some(if selected == branches.len() {
+                        BranchSelection::CreateNew
+                    } else {
+                        BranchSelection::Existing(branches[selected].clone())
+                    }));
                 }
                 Key::Up => {
-                    if let Some(index) = selected {
-                        selected = Some(move_branch_selection(branches, index, -1));
-                    }
+                    selected = move_branch_selection(branches, selected, -1);
                 }
                 Key::Down => {
-                    if let Some(index) = selected {
-                        selected = Some(move_branch_selection(branches, index, 1));
-                    }
+                    selected = move_branch_selection(branches, selected, 1);
                 }
                 Key::Unknown => {}
             }
@@ -364,11 +363,11 @@ fn char_byte_index(value: &str, character: usize) -> usize {
         .map_or(value.len(), |(i, _)| i)
 }
 
-fn render_path_editor<W: Write>(output: &mut W, editor: &PathEditor) -> io::Result<()> {
+fn render_editor<W: Write>(output: &mut W, prompt: &str, editor: &PathEditor) -> io::Result<()> {
     execute!(output, MoveToColumn(0), Clear(ClearType::CurrentLine))?;
-    write!(output, "Worktree path: {}", editor.value)?;
+    write!(output, "{prompt}{}", editor.value)?;
     let cursor_byte = char_byte_index(&editor.value, editor.cursor);
-    let column = "Worktree path: ".len() + editor.value[..cursor_byte].width();
+    let column = prompt.width() + editor.value[..cursor_byte].width();
     execute!(
         output,
         MoveToColumn(column.min(u16::MAX as usize) as u16),
@@ -377,13 +376,13 @@ fn render_path_editor<W: Write>(output: &mut W, editor: &PathEditor) -> io::Resu
     output.flush()
 }
 
-pub fn input_path(default: &str) -> io::Result<Option<String>> {
+fn input_text(prompt: &str, default: &str) -> io::Result<Option<String>> {
     let mut editor = PathEditor::new(default.to_owned());
     enable_raw_mode()?;
     let _guard = Guard(true);
     let mut output = io::stderr();
     loop {
-        render_path_editor(&mut output, &editor)?;
+        render_editor(&mut output, prompt, &editor)?;
         if let Event::Key(KeyEvent {
             code, modifiers, ..
         }) = event::read()?
@@ -396,6 +395,14 @@ pub fn input_path(default: &str) -> io::Result<Option<String>> {
     }
 }
 
+pub fn input_branch_name() -> io::Result<Option<String>> {
+    input_text("New branch name: ", "")
+}
+
+pub fn input_path(default: &str) -> io::Result<Option<String>> {
+    input_text("Worktree path: ", default)
+}
+
 pub fn default_worktree_path(project_name: &str, branch_name: &str) -> String {
     format!("../{project_name}_{}", branch_name.replace('/', "_"))
 }
@@ -404,7 +411,7 @@ pub fn default_worktree_path(project_name: &str, branch_name: &str) -> String {
 mod tests {
     use super::{
         default_worktree_path, first_available, move_branch_selection, render_branch_lines,
-        render_path_editor, write_lines, PathEditor,
+        render_editor, write_lines, PathEditor,
     };
     use crate::types::BranchCandidate;
     use crossterm::event::{KeyCode, KeyModifiers};
@@ -448,7 +455,12 @@ mod tests {
     #[test]
     fn path_editor_rendering_shows_the_terminal_cursor() {
         let mut output = Vec::new();
-        render_path_editor(&mut output, &PathEditor::new("分支".into())).unwrap();
+        render_editor(
+            &mut output,
+            "Worktree path: ",
+            &PathEditor::new("分支".into()),
+        )
+        .unwrap();
         assert!(output.windows(6).any(|bytes| bytes == b"\x1b[?25h"));
     }
 
@@ -467,25 +479,44 @@ mod tests {
             branch("two", Some("/repo/two")),
             branch("three", None),
         ];
-        assert_eq!(first_available(&branches), Some(1));
+        assert_eq!(first_available(&branches), 1);
         assert_eq!(move_branch_selection(&branches, 1, 1), 3);
-        assert_eq!(move_branch_selection(&branches, 3, 1), 1);
-        assert_eq!(move_branch_selection(&branches, 1, -1), 3);
+        assert_eq!(move_branch_selection(&branches, 3, 1), 4);
+        assert_eq!(move_branch_selection(&branches, 4, 1), 1);
+        assert_eq!(move_branch_selection(&branches, 1, -1), 4);
     }
 
     #[test]
-    fn all_occupied_branches_have_no_selection() {
+    fn all_occupied_branches_select_create_new() {
         let branches = [branch("main", Some("/repo"))];
-        assert_eq!(first_available(&branches), None);
+        assert_eq!(first_available(&branches), 1);
+        assert_eq!(move_branch_selection(&branches, 1, 1), 1);
     }
 
     #[test]
     fn occupied_branch_rendering_includes_path_and_respects_width() {
         let branches = [branch("main", Some("/repo/work tree-你好"))];
         let full = render_branch_lines(&branches, None, usize::MAX, false);
-        assert_eq!(full, vec!["  main  in use: /repo/work tree-你好"]);
+        assert_eq!(
+            full,
+            vec![
+                "  main  in use: /repo/work tree-你好",
+                "  Create new branch..."
+            ]
+        );
         let narrow = render_branch_lines(&branches, None, 18, false);
         assert!(unicode_width::UnicodeWidthStr::width(narrow[0].as_str()) <= 18);
         assert!(narrow[0].ends_with('…'));
+        assert!(unicode_width::UnicodeWidthStr::width(narrow[1].as_str()) <= 18);
+    }
+
+    #[test]
+    fn empty_branch_list_still_offers_create_new() {
+        let branches = [];
+        assert_eq!(first_available(&branches), 0);
+        assert_eq!(
+            render_branch_lines(&branches, Some(0), usize::MAX, false),
+            vec!["> Create new branch..."]
+        );
     }
 }

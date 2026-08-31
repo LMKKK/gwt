@@ -195,6 +195,65 @@ fn creating_at_an_existing_path_preserves_git_error() {
 }
 
 #[test]
+fn creates_a_new_branch_from_the_calling_worktree_head() {
+    let t = Temp::new("new-branch");
+    let root = t.0.join("main");
+    let source = t.0.join("source");
+    let destination = t.0.join("destination");
+    fs::create_dir(&root).unwrap();
+    ok(&root, &["init", "-b", "main"]);
+    fs::write(root.join("tracked.txt"), "initial\n").unwrap();
+    ok(&root, &["add", "tracked.txt"]);
+    ok(&root, &["commit", "-m", "initial"]);
+    ok(
+        &root,
+        &["worktree", "add", "-b", "source", source.to_str().unwrap()],
+    );
+    fs::write(source.join("tracked.txt"), "source head\n").unwrap();
+    ok(&source, &["commit", "-am", "source head"]);
+    let source_head = run(&source, &["rev-parse", "HEAD"]).stdout;
+
+    git::add_worktree_new_branch(&source, &destination, "feature/new-你好").unwrap();
+
+    assert!(destination.is_dir());
+    assert_eq!(
+        String::from_utf8_lossy(&run(&destination, &["branch", "--show-current"]).stdout).trim(),
+        "feature/new-你好"
+    );
+    assert_eq!(
+        run(&destination, &["rev-parse", "HEAD"]).stdout,
+        source_head
+    );
+}
+
+#[test]
+fn new_branch_creation_preserves_git_validation_errors() {
+    let t = Temp::new("new-branch-errors");
+    ok(&t.0, &["init", "-b", "main"]);
+    fs::write(t.0.join("tracked.txt"), "initial\n").unwrap();
+    ok(&t.0, &["add", "tracked.txt"]);
+    ok(&t.0, &["commit", "-m", "initial"]);
+
+    let invalid = git::add_worktree_new_branch(&t.0, &t.0.join("invalid"), "bad name")
+        .unwrap_err()
+        .to_string();
+    assert!(invalid.contains("not a valid branch name"));
+
+    let duplicate = git::add_worktree_new_branch(&t.0, &t.0.join("duplicate"), "main")
+        .unwrap_err()
+        .to_string();
+    assert!(duplicate.contains("already exists"));
+
+    let occupied = t.0.join("occupied");
+    fs::create_dir(&occupied).unwrap();
+    fs::write(occupied.join("file"), "conflict").unwrap();
+    let path_conflict = git::add_worktree_new_branch(&t.0, &occupied, "path-conflict")
+        .unwrap_err()
+        .to_string();
+    assert!(path_conflict.contains("already exists"));
+}
+
+#[test]
 fn counts_a_real_merge_conflict() {
     let t = Temp::new("conflict");
     ok(&t.0, &["init", "-b", "main"]);

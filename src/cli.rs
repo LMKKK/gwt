@@ -1,3 +1,4 @@
+use crate::types::BranchSelection;
 use crate::{git, shell, table, tui};
 use std::io::{self, IsTerminal, Write};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -79,14 +80,20 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
             }
             let cwd = git::cwd()?;
             let branches = git::branch_candidates(&cwd)?;
-            if branches.is_empty() {
-                return Err("No local branches found.".into());
-            }
-            let Some(branch) = tui::select_branch(&branches)? else {
+            let Some(selection) = tui::select_branch(&branches)? else {
                 return Ok(0);
             };
+            let (branch, create) = match selection {
+                BranchSelection::Existing(branch) => (branch.name, false),
+                BranchSelection::CreateNew => {
+                    let Some(branch) = tui::input_branch_name()? else {
+                        return Ok(0);
+                    };
+                    (branch, true)
+                }
+            };
             let project_name = git::main_worktree_name(&cwd)?;
-            let default_path = tui::default_worktree_path(&project_name, &branch.name);
+            let default_path = tui::default_worktree_path(&project_name, &branch);
             let Some(input) = tui::input_path(&default_path)? else {
                 return Ok(0);
             };
@@ -96,7 +103,11 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
             } else {
                 cwd.join(path)
             };
-            git::add_worktree(&cwd, &absolute, &branch.name)?;
+            if create {
+                git::add_worktree_new_branch(&cwd, &absolute, &branch)?;
+            } else {
+                git::add_worktree(&cwd, &absolute, &branch)?;
+            }
             println!("{}", absolute.display());
             Ok(0)
         }

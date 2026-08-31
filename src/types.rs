@@ -27,6 +27,12 @@ impl BranchCandidate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchSelection {
+    Existing(BranchCandidate),
+    CreateNew,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Worktree {
     pub path: String,
     pub head: String,

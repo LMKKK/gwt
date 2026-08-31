@@ -196,31 +196,42 @@ pub fn remove_candidates(worktrees: &[Worktree]) -> Vec<Worktree> {
 }
 
 pub fn add_worktree(cwd: &Path, path: &Path, branch: &str) -> Result<(), GitError> {
-    let output = Command::new("git")
-        .args(["worktree", "add"])
-        .arg(path)
-        .arg(branch)
-        .current_dir(cwd)
-        .output()
-        .map_err(|_| {
-            GitError(
-                "Unable to run Git. Make sure 'git' is installed and available in PATH.".into(),
-            )
-        })?;
+    add_worktree_with_args(cwd, path, branch, false)
+}
+
+pub fn add_worktree_new_branch(cwd: &Path, path: &Path, branch: &str) -> Result<(), GitError> {
+    add_worktree_with_args(cwd, path, branch, true)
+}
+
+fn add_worktree_with_args(
+    cwd: &Path,
+    path: &Path,
+    branch: &str,
+    create_branch: bool,
+) -> Result<(), GitError> {
+    let mut command = Command::new("git");
+    command.args(["worktree", "add"]);
+    if create_branch {
+        command.arg("-b").arg(branch).arg(path);
+    } else {
+        command.arg(path).arg(branch);
+    }
+    let output = command.current_dir(cwd).output().map_err(|_| {
+        GitError("Unable to run Git. Make sure 'git' is installed and available in PATH.".into())
+    })?;
     if output.status.success() {
         return Ok(());
     }
     let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    Err(GitError(if detail.is_empty() {
-        format!(
-            "Git command failed: git worktree add {} {branch}",
-            path.display()
-        )
+    let invocation = if create_branch {
+        format!("git worktree add -b {branch} {}", path.display())
     } else {
-        format!(
-            "Git command failed: git worktree add {} {branch}\n{detail}",
-            path.display()
-        )
+        format!("git worktree add {} {branch}", path.display())
+    };
+    Err(GitError(if detail.is_empty() {
+        format!("Git command failed: {invocation}")
+    } else {
+        format!("Git command failed: {invocation}\n{detail}")
     }))
 }
 
