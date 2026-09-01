@@ -10,7 +10,81 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
 use std::io::{self, Write};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+fn display_width(value: &str) -> usize {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    let mut width = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\x1b' && bytes.get(index + 1) == Some(&b'[') {
+            index += 2;
+            while index < bytes.len() {
+                let byte = bytes[index];
+                index += 1;
+                if (0x40..=0x7e).contains(&byte) {
+                    break;
+                }
+            }
+            continue;
+        }
+        let ch = value[index..].chars().next().expect("valid UTF-8 boundary");
+        width += ch.width().unwrap_or(0);
+        index += ch.len_utf8();
+    }
+    width
+}
+
+fn truncate_styled(value: &str, max_width: usize) -> String {
+    if display_width(value) <= max_width {
+        return value.into();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let target = max_width - 1;
+    let bytes = value.as_bytes();
+    let mut output = String::new();
+    let mut index = 0;
+    let mut width = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\x1b' && bytes.get(index + 1) == Some(&b'[') {
+            let start = index;
+            index += 2;
+            while index < bytes.len() {
+                let byte = bytes[index];
+                index += 1;
+                if (0x40..=0x7e).contains(&byte) {
+                    break;
+                }
+            }
+            output.push_str(&value[start..index]);
+            continue;
+        }
+        let ch = value[index..].chars().next().expect("valid UTF-8 boundary");
+        let char_width = ch.width().unwrap_or(0);
+        if width + char_width > target {
+            break;
+        }
+        output.push(ch);
+        width += char_width;
+        index += ch.len_utf8();
+    }
+    output.push('…');
+    if value.contains('\x1b') {
+        output.push_str("\x1b[0m");
+    }
+    output
+}
+
+fn fit_lines_to_terminal(lines: Vec<String>, terminal_width: usize) -> Vec<String> {
+    let safe_width = terminal_width.saturating_sub(1);
+    lines
+        .into_iter()
+        .map(|line| truncate_styled(&line, safe_width))
+        .collect()
+}
 
 fn write_lines<W: Write>(output: &mut W, lines: &[String]) -> io::Result<()> {
     for line in lines {
@@ -18,6 +92,47 @@ fn write_lines<W: Write>(output: &mut W, lines: &[String]) -> io::Result<()> {
         write!(output, "{line}\r\n")?
     }
     Ok(())
+}
+
+fn render_worktree_lines(
+    worktrees: &[Worktree],
+    selected: usize,
+    terminal_width: usize,
+    color: bool,
+    title: Option<&str>,
+    action: &str,
+) -> Vec<String> {
+    let theme = Theme { color };
+    let table_lines = table::render(
+        worktrees,
+        terminal_width.saturating_sub(3),
+        color,
+        Some(selected),
+    );
+    let mut lines = Vec::new();
+    if let Some(title) = title {
+        lines.push(theme.hint(title));
+    }
+    lines.extend(table_lines.into_iter().enumerate().map(|(i, line)| {
+        let marker = if i > 0 && i - 1 == selected {
+            theme.selected("> ")
+        } else {
+            "  ".into()
+        };
+        format!("{marker}{line}")
+    }));
+    lines.push(format!(
+        "{}{}{}{}{}{}{}{}",
+        theme.key("↑/↓"),
+        theme.hint(" or "),
+        theme.key("j/k"),
+        theme.hint(" move • "),
+        theme.key("Enter"),
+        theme.hint(&format!(" {action} • ")),
+        theme.key("q"),
+        theme.hint(" cancel")
+    ));
+    fit_lines_to_terminal(lines, terminal_width)
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum Key {
@@ -89,36 +204,14 @@ fn select_worktree<'a>(
             execute!(output, MoveUp(rendered as u16), MoveToColumn(0))?
         }
         execute!(output, Hide)?;
-        let theme = Theme { color };
-        let table_lines = table::render(
+        let lines = render_worktree_lines(
             worktrees,
-            git::terminal_width().saturating_sub(2),
+            selected,
+            git::terminal_width(),
             color,
-            Some(selected),
+            title,
+            action,
         );
-        let mut lines = Vec::new();
-        if let Some(title) = title {
-            lines.push(theme.hint(title));
-        }
-        lines.extend(table_lines.into_iter().enumerate().map(|(i, line)| {
-            let marker = if i > 0 && i - 1 == selected {
-                theme.selected("> ")
-            } else {
-                "  ".into()
-            };
-            format!("{marker}{line}")
-        }));
-        lines.push(format!(
-            "{}{}{}{}{}{}{}{}",
-            theme.key("↑/↓"),
-            theme.hint(" or "),
-            theme.key("j/k"),
-            theme.hint(" move • "),
-            theme.key("Enter"),
-            theme.hint(&format!(" {action} • ")),
-            theme.key("q"),
-            theme.hint(" cancel")
-        ));
         write_lines(&mut output, &lines)?;
         output.flush()?;
         rendered = lines.len();
@@ -261,11 +354,12 @@ pub fn select_branch(branches: &[BranchCandidate]) -> io::Result<Option<BranchSe
             execute!(output, MoveUp(rendered as u16), MoveToColumn(0))?;
         }
         execute!(output, Hide)?;
+        let terminal_width = git::terminal_width();
         let mut lines = vec![theme.hint("Select a local branch or create one:")];
         lines.extend(render_branch_lines(
             branches,
             Some(selected),
-            git::terminal_width(),
+            terminal_width.saturating_sub(1),
             color,
         ));
         lines.push(format!(
@@ -279,6 +373,7 @@ pub fn select_branch(branches: &[BranchCandidate]) -> io::Result<Option<BranchSe
             theme.key("q"),
             theme.hint(" cancel")
         ));
+        let lines = fit_lines_to_terminal(lines, terminal_width);
         write_lines(&mut output, &lines)?;
         output.flush()?;
         rendered = lines.len();
@@ -415,11 +510,13 @@ pub fn default_worktree_path(project_name: &str, branch_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_worktree_path, first_available, move_branch_selection, render_branch_lines,
-        render_editor, write_lines, PathEditor,
+        default_worktree_path, display_width, first_available, move_branch_selection,
+        render_branch_lines, render_editor, render_worktree_lines, truncate_styled, write_lines,
+        PathEditor,
     };
-    use crate::types::BranchCandidate;
+    use crate::types::{BranchCandidate, Worktree};
     use crossterm::event::{KeyCode, KeyModifiers};
+    use unicode_width::UnicodeWidthStr;
 
     #[test]
     fn raw_terminal_lines_return_to_the_left_margin() {
@@ -429,6 +526,39 @@ mod tests {
         assert!(text.contains("first\r\n"));
         assert!(text.contains("second\r\n"));
         assert!(!text.contains("first\n"));
+    }
+
+    #[test]
+    fn worktree_selector_keeps_the_last_terminal_column_unused() {
+        let width = 80;
+        let worktree = Worktree::record(
+            "/a/path/long/enough/to/make/the/table/use/all/available/columns".into(),
+        );
+        let lines = render_worktree_lines(&[worktree], 0, width, false, None, "select");
+
+        assert!(
+            lines.iter().all(|line| line.width() < width),
+            "a full-width line can trigger an implicit wrap: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn narrow_colored_frames_are_clipped_by_visible_width() {
+        let width = 24;
+        let worktree = Worktree::record("/a/very/long/worktree/path".into());
+        let lines = render_worktree_lines(
+            &[worktree],
+            0,
+            width,
+            true,
+            Some("Select a worktree to remove:"),
+            "remove",
+        );
+
+        assert!(lines.iter().all(|line| display_width(line) < width));
+        assert!(lines.iter().any(|line| line.contains('\x1b')));
+        assert_eq!(display_width(&truncate_styled("你好abcdef", 6)), 6);
+        assert!(!truncate_styled("plain text", 5).contains('\x1b'));
     }
 
     #[test]
