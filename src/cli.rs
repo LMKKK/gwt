@@ -3,7 +3,7 @@ use crate::{git, shell, table, tui};
 use std::io::{self, IsTerminal, Write};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 fn help() -> String {
-    format!("gwt {VERSION} — switch between Git worktrees\n\nUsage:\n  gwt list          List and switch between worktrees\n  gwt new           Create and switch to a worktree (shell integration required)\n  gwt remove        Interactively remove a linked worktree\n  gwt init zsh      Print zsh integration\n  gwt init bash     Print bash integration\n  gwt --help        Show help\n  gwt --version     Show version\n\nInstall shell integration so list and new can change the current directory:\n  eval \"$(gwt init zsh)\"\n  eval \"$(gwt init bash)\"")
+    format!("gwt {VERSION} — switch between Git worktrees\n\nUsage:\n  gwt list          List and switch between worktrees\n  gwt new           Create a worktree and optionally switch to it (shell integration required)\n  gwt remove        Interactively remove a linked worktree\n  gwt init zsh      Print zsh integration\n  gwt init bash     Print bash integration\n  gwt --help        Show help\n  gwt --version     Show version\n\nInstall shell integration so list and new can change the current directory:\n  eval \"$(gwt init zsh)\"\n  eval \"$(gwt init bash)\"")
 }
 pub fn run(args: Vec<String>) -> u8 {
     match run_inner(&args) {
@@ -108,7 +108,9 @@ fn run_inner(args: &[String]) -> Result<u8, Box<dyn std::error::Error>> {
             } else {
                 git::add_worktree(&cwd, &absolute, &branch)?;
             }
-            println!("{}", absolute.display());
+            if tui::confirm_switch(&absolute)? {
+                println!("{}", absolute.display());
+            }
             Ok(0)
         }
         Some("remove") => {

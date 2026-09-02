@@ -9,7 +9,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    path::Path,
+};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 fn display_width(value: &str) -> usize {
@@ -253,7 +256,17 @@ pub fn confirm_remove(worktree: &Worktree) -> io::Result<bool> {
     let mut output = io::stderr();
     writeln!(output, "Branch: {branch}")?;
     writeln!(output, "Path: {}", worktree.path)?;
-    write!(output, "Remove this worktree? [y/N] ")?;
+    confirm(&mut output, "Remove this worktree? [y/N] ")
+}
+
+pub fn confirm_switch(path: &Path) -> io::Result<bool> {
+    let mut output = io::stderr();
+    writeln!(output, "Created worktree: {}", path.display())?;
+    confirm(&mut output, "Switch to the new worktree? [y/N] ")
+}
+
+fn confirm<W: Write>(output: &mut W, prompt: &str) -> io::Result<bool> {
+    write!(output, "{prompt}")?;
     output.flush()?;
     enable_raw_mode()?;
     let _guard = Guard(true);

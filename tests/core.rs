@@ -195,7 +195,7 @@ fn remove_candidates_exclude_unsafe_entries_but_keep_dirty_and_locked() {
 }
 
 #[test]
-fn remove_confirmation_only_accepts_y() {
+fn confirmation_only_accepts_y() {
     for code in [KeyCode::Char('y'), KeyCode::Char('Y')] {
         assert_eq!(parse_confirm_key(code, KeyModifiers::NONE), ConfirmKey::Yes);
     }

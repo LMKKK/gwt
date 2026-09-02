@@ -30,13 +30,13 @@ eval "$(gwt init zsh)"
 eval "$(gwt init bash)"
 ```
 
-Use `gwt list`, move with arrow keys or `j`/`k`, press Enter to select, and press `q` to cancel. Use `gwt new` to select an unused local branch or choose `Create new branch...`, then edit the new worktree path (the default is `../<project-name>_<branch-name>`, using the main worktree directory name and replacing `/` in the branch name with `_`), create it, and switch to it. New branches start at the current `HEAD`. Branches already checked out in another worktree remain visible with that worktree's path, but cannot be selected. Relative paths are resolved from the directory where you invoked `gwt`; `~` and shell variables are not expanded.
+Use `gwt list`, move with arrow keys or `j`/`k`, press Enter to select, and press `q` to cancel. Use `gwt new` to select an unused local branch or choose `Create new branch...`, then edit the new worktree path (the default is `../<project-name>_<branch-name>`, using the main worktree directory name and replacing `/` in the branch name with `_`) and create it. After creation, press `y` to switch to the new worktree; pressing Enter or choosing no keeps the current directory. New branches start at the current `HEAD`. Branches already checked out in another worktree remain visible with that worktree's path, but cannot be selected. Relative paths are resolved from the directory where you invoked `gwt`; `~` and shell variables are not expanded.
 
 Use `gwt remove` to select a linked worktree and confirm its removal. The main worktree, the worktree containing the current directory, and unavailable or prunable entries are excluded. Dirty and locked worktrees remain visible, but Git refuses to remove them because `gwt` never uses `--force`. Removing a worktree does not delete its local branch.
 
 In the leftmost column, `M` marks Git's main worktree and `*` marks the worktree containing the current directory. `M*` means the main worktree is also current.
 
-The internal `gwt list --select` and `gwt new --select` commands print a selected or newly created absolute path for shell integration. Their interactive interfaces are written to stderr. Set `NO_COLOR` to disable color.
+The internal `gwt list --select` command prints the selected absolute path for shell integration. `gwt new --select` prints the newly created absolute path only when switching is confirmed. Their interactive interfaces are written to stderr. Set `NO_COLOR` to disable color.
 
 ## Development
 
