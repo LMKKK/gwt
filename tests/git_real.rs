@@ -227,6 +227,178 @@ fn creates_a_new_branch_from_the_calling_worktree_head() {
 }
 
 #[test]
+fn creates_and_tracks_a_new_branch_from_a_unique_remote_branch() {
+    let t = Temp::new("new-remote-branch");
+    let root = t.0.join("main");
+    let destination = t.0.join("destination");
+    fs::create_dir(&root).unwrap();
+    ok(&root, &["init", "-b", "main"]);
+    fs::write(root.join("tracked.txt"), "initial\n").unwrap();
+    ok(&root, &["add", "tracked.txt"]);
+    ok(&root, &["commit", "-m", "initial"]);
+    let main_head = run(&root, &["rev-parse", "HEAD"]).stdout;
+    ok(&root, &["switch", "-c", "remote-source"]);
+    fs::write(root.join("tracked.txt"), "remote feature\n").unwrap();
+    ok(&root, &["commit", "-am", "remote feature"]);
+    let remote_head = run(&root, &["rev-parse", "HEAD"]).stdout;
+    ok(&root, &["switch", "main"]);
+    ok(
+        &root,
+        &[
+            "remote",
+            "add",
+            "origin",
+            t.0.join("origin.git").to_str().unwrap(),
+        ],
+    );
+    ok(
+        &root,
+        &["update-ref", "refs/remotes/origin/feature", "remote-source"],
+    );
+    ok(&root, &["branch", "-D", "remote-source"]);
+
+    git::add_worktree_new_branch(&root, &destination, "feature").unwrap();
+
+    assert_eq!(
+        run(&destination, &["rev-parse", "HEAD"]).stdout,
+        remote_head
+    );
+    assert_ne!(run(&destination, &["rev-parse", "HEAD"]).stdout, main_head);
+    assert_eq!(
+        String::from_utf8_lossy(
+            &run(
+                &destination,
+                &[
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "--symbolic-full-name",
+                    "@{upstream}"
+                ],
+            )
+            .stdout
+        )
+        .trim(),
+        "origin/feature"
+    );
+}
+
+#[test]
+fn ambiguous_remote_branches_fail_without_leaving_a_branch_or_worktree() {
+    let t = Temp::new("ambiguous-remote-branch");
+    let root = t.0.join("main");
+    let destination = t.0.join("destination");
+    fs::create_dir(&root).unwrap();
+    ok(&root, &["init", "-b", "main"]);
+    fs::write(root.join("tracked.txt"), "initial\n").unwrap();
+    ok(&root, &["add", "tracked.txt"]);
+    ok(&root, &["commit", "-m", "initial"]);
+    ok(
+        &root,
+        &[
+            "remote",
+            "add",
+            "origin",
+            t.0.join("origin.git").to_str().unwrap(),
+        ],
+    );
+    ok(
+        &root,
+        &[
+            "remote",
+            "add",
+            "upstream",
+            t.0.join("upstream.git").to_str().unwrap(),
+        ],
+    );
+    ok(
+        &root,
+        &["update-ref", "refs/remotes/origin/feature", "HEAD"],
+    );
+    ok(
+        &root,
+        &["update-ref", "refs/remotes/upstream/feature", "HEAD"],
+    );
+    let error = git::add_worktree_new_branch(&root, &destination, "feature").unwrap_err();
+
+    assert!(error.to_string().contains("feature"));
+    assert!(!destination.exists());
+    assert!(!run(
+        &root,
+        &["show-ref", "--verify", "--quiet", "refs/heads/feature"]
+    )
+    .status
+    .success());
+}
+
+#[test]
+fn default_remote_selects_and_tracks_the_matching_remote_branch() {
+    let t = Temp::new("default-remote-branch");
+    let root = t.0.join("main");
+    let destination = t.0.join("destination");
+    fs::create_dir(&root).unwrap();
+    ok(&root, &["init", "-b", "main"]);
+    fs::write(root.join("tracked.txt"), "initial\n").unwrap();
+    ok(&root, &["add", "tracked.txt"]);
+    ok(&root, &["commit", "-m", "initial"]);
+    ok(&root, &["switch", "-c", "origin-source"]);
+    fs::write(root.join("tracked.txt"), "origin feature\n").unwrap();
+    ok(&root, &["commit", "-am", "origin feature"]);
+    let origin_head = run(&root, &["rev-parse", "HEAD"]).stdout;
+    ok(&root, &["switch", "main"]);
+    ok(
+        &root,
+        &[
+            "remote",
+            "add",
+            "origin",
+            t.0.join("origin.git").to_str().unwrap(),
+        ],
+    );
+    ok(
+        &root,
+        &[
+            "remote",
+            "add",
+            "upstream",
+            t.0.join("upstream.git").to_str().unwrap(),
+        ],
+    );
+    ok(
+        &root,
+        &["update-ref", "refs/remotes/origin/feature", "origin-source"],
+    );
+    ok(
+        &root,
+        &["update-ref", "refs/remotes/upstream/feature", "main"],
+    );
+    ok(&root, &["branch", "-D", "origin-source"]);
+    ok(&root, &["config", "checkout.defaultRemote", "origin"]);
+
+    git::add_worktree_new_branch(&root, &destination, "feature").unwrap();
+
+    assert_eq!(
+        run(&destination, &["rev-parse", "HEAD"]).stdout,
+        origin_head
+    );
+    assert_eq!(
+        String::from_utf8_lossy(
+            &run(
+                &destination,
+                &[
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "--symbolic-full-name",
+                    "@{upstream}"
+                ],
+            )
+            .stdout
+        )
+        .trim(),
+        "origin/feature"
+    );
+}
+
+#[test]
 fn new_branch_creation_preserves_git_validation_errors() {
     let t = Temp::new("new-branch-errors");
     ok(&t.0, &["init", "-b", "main"]);

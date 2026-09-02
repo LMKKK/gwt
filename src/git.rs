@@ -200,7 +200,26 @@ pub fn add_worktree(cwd: &Path, path: &Path, branch: &str) -> Result<(), GitErro
 }
 
 pub fn add_worktree_new_branch(cwd: &Path, path: &Path, branch: &str) -> Result<(), GitError> {
-    add_worktree_with_args(cwd, path, branch, true)
+    let refs = SystemGit.run(
+        &[
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+        cwd,
+    )?;
+    let refs = parse_branches(&refs);
+    let local_ref = format!("refs/heads/{branch}");
+    let local_exists = refs.iter().any(|reference| reference == &local_ref);
+    let remote_exists = refs.iter().any(|reference| {
+        reference
+            .strip_prefix("refs/remotes/")
+            .and_then(|reference| reference.split_once('/'))
+            .is_some_and(|(_, remote_branch)| remote_branch == branch)
+    });
+
+    add_worktree_with_args(cwd, path, branch, local_exists || !remote_exists)
 }
 
 fn add_worktree_with_args(
